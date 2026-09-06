@@ -11,7 +11,6 @@ import dev.epriam.connect.protocol.RockingIntensity
 import dev.epriam.connect.protocol.RockingProtocolError
 import dev.epriam.connect.protocol.RockingRequest
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,33 +24,28 @@ import kotlinx.coroutines.launch
 
 class PriamRepository(context: Context) : PriamBleListener {
     private val applicationContext = context.applicationContext
-    private val preferences = applicationContext.getSharedPreferences("priam", Context.MODE_PRIVATE)
+    private val preferences = PriamPreferences(applicationContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val scanner = PriamScanner(applicationContext)
     private var manager: PriamBleManager? = null
     private var scanTimeout: Job? = null
     private var autoConnectJob: Job? = null
     private var demoCountdown: Job? = null
-    private var rockingUpdateJob: Job? = null
-    private var pendingRockingUpdate: RockingRequest? = null
     private val disconnectExpected = AtomicBoolean(false)
 
-    private val _state = MutableStateFlow(
-        PriamUiState(
-            safetyAccepted = preferences.getInt(KEY_DISCLAIMER_VERSION, 0) >= CURRENT_DISCLAIMER_VERSION,
-            selectedIntensity = RockingIntensity.fromWire(
-                preferences.getInt(KEY_INTENSITY, RockingIntensity.MEDIUM.wireValue),
-            ) ?: RockingIntensity.LOW,
-            selectedDurationMinutes = preferences.getInt(KEY_DURATION_MINUTES, 30).coerceIn(5, 180),
-            themeMode = preferences.getString(KEY_THEME_MODE, null)
-                ?.let { value -> runCatching { ThemeMode.valueOf(value) }.getOrNull() }
-                ?: ThemeMode.SYSTEM,
-        ),
-    )
+    private val _state = MutableStateFlow(preferences.loadInitialState())
     val state: StateFlow<PriamUiState> = _state.asStateFlow()
+    private val rockingUpdates = RockingUpdateController(
+        scope = scope,
+        writeRocking = { packet ->
+            requireNotNull(manager) { "Bluetooth connection unavailable" }.writeRocking(packet)
+        },
+        onDiagnostic = ::addDiagnostic,
+        onError = ::actionError,
+    )
 
     fun acceptSafety() {
-        preferences.edit().putInt(KEY_DISCLAIMER_VERSION, CURRENT_DISCLAIMER_VERSION).apply()
+        preferences.acceptSafetyDisclaimer()
         _state.update { it.copy(safetyAccepted = true) }
     }
 
@@ -204,21 +198,21 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     fun setIntensity(intensity: RockingIntensity) {
-        preferences.edit().putInt(KEY_INTENSITY, intensity.wireValue).apply()
+        preferences.saveIntensity(intensity)
         _state.update { it.copy(selectedIntensity = intensity) }
         val active = _state.value.rockingState as? RockingState.Active ?: return
-        if (active.intensity == intensity && pendingRockingUpdate == null) return
+        if (active.intensity == intensity && rockingUpdates.pendingRequest == null) return
         if (_state.value.isDemo) {
             runDemoCountdown(intensity, active.remainingSeconds)
             return
         }
-        val request = (pendingRockingUpdate ?: active.toUpdateRequest()).copy(intensity = intensity)
-        scheduleRockingUpdate(request)
+        val request = (rockingUpdates.pendingRequest ?: active.toUpdateRequest()).copy(intensity = intensity)
+        rockingUpdates.schedule(request)
     }
 
     fun setDuration(minutes: Int) {
         val bounded = minutes.coerceIn(5, 180)
-        preferences.edit().putInt(KEY_DURATION_MINUTES, bounded).apply()
+        preferences.saveDurationMinutes(bounded)
         _state.update { it.copy(selectedDurationMinutes = bounded) }
         val active = _state.value.rockingState as? RockingState.Active ?: return
         val durationSeconds = bounded * 60
@@ -226,14 +220,14 @@ class PriamRepository(context: Context) : PriamBleListener {
             runDemoCountdown(active.intensity, durationSeconds)
             return
         }
-        val request = (pendingRockingUpdate ?: active.toUpdateRequest()).copy(
+        val request = (rockingUpdates.pendingRequest ?: active.toUpdateRequest()).copy(
             durationSeconds = durationSeconds,
         )
-        scheduleRockingUpdate(request)
+        rockingUpdates.schedule(request)
     }
 
     fun setThemeMode(themeMode: ThemeMode) {
-        preferences.edit().putString(KEY_THEME_MODE, themeMode.name).apply()
+        preferences.saveThemeMode(themeMode)
         _state.update { it.copy(themeMode = themeMode) }
     }
 
@@ -285,8 +279,7 @@ class PriamRepository(context: Context) : PriamBleListener {
     fun startRocking() {
         val current = _state.value
         if (!current.isReady || current.motionMayBeActive) return
-        rockingUpdateJob?.cancel()
-        pendingRockingUpdate = null
+        rockingUpdates.cancel()
         val durationSeconds = current.selectedDurationMinutes * 60
         _state.update {
             it.copy(rockingState = RockingState.Starting(current.selectedIntensity, durationSeconds))
@@ -325,8 +318,7 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     fun stopRocking() {
-        rockingUpdateJob?.cancel()
-        pendingRockingUpdate = null
+        rockingUpdates.cancel()
         demoCountdown?.cancel()
         if (_state.value.isDemo) {
             _state.update { it.copy(rockingState = RockingState.Off) }
@@ -369,8 +361,7 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     override fun onDisconnected(reason: Int) {
         if (disconnectExpected.getAndSet(false)) return
-        rockingUpdateJob?.cancel()
-        pendingRockingUpdate = null
+        rockingUpdates.cancel()
         manager = null
         _state.update {
             it.copy(
@@ -430,15 +421,7 @@ class PriamRepository(context: Context) : PriamBleListener {
             )
             else -> RockingState.Off
         }
-        pendingRockingUpdate?.let { pending ->
-            if (
-                notification.intensity == pending.intensity &&
-                notification.configuredSeconds == pending.durationSeconds
-            ) {
-                pendingRockingUpdate = null
-                addDiagnostic("Rocking adjustment confirmed")
-            }
-        }
+        rockingUpdates.confirm(notification)
         _state.update { it.copy(rockingState = rockingState) }
         addDiagnostic("Rocking notify ${PriamProtocol.toHex(bytes)}")
     }
@@ -459,30 +442,6 @@ class PriamRepository(context: Context) : PriamBleListener {
                 remaining--
             }
             _state.update { it.copy(rockingState = RockingState.Off) }
-        }
-    }
-
-    private fun scheduleRockingUpdate(request: RockingRequest) {
-        pendingRockingUpdate = request
-        rockingUpdateJob?.cancel()
-        rockingUpdateJob = scope.launch {
-            delay(ROCKING_UPDATE_DEBOUNCE_MILLIS)
-            val packet = PriamProtocol.encodeRocking(request)
-            runCatching {
-                val activeManager = requireNotNull(manager) { "Bluetooth connection unavailable" }
-                activeManager.writeRocking(packet)
-            }.onSuccess {
-                addDiagnostic("Rocking adjustment ${PriamProtocol.toHex(packet)}")
-                delay(ROCKING_UPDATE_CONFIRMATION_MILLIS)
-                if (pendingRockingUpdate == request) {
-                    pendingRockingUpdate = null
-                    actionError("Rocking adjustment was not confirmed by the stroller")
-                }
-            }.onFailure {
-                if (it is CancellationException) throw it
-                if (pendingRockingUpdate == request) pendingRockingUpdate = null
-                actionError("Rocking adjustment failed: ${it.message}")
-            }
         }
     }
 
@@ -540,15 +499,8 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     companion object {
-        private const val KEY_DISCLAIMER_VERSION = "disclaimer_version"
-        private const val KEY_INTENSITY = "rocking_intensity"
-        private const val KEY_DURATION_MINUTES = "rocking_duration_minutes"
-        private const val KEY_THEME_MODE = "theme_mode"
-        private const val CURRENT_DISCLAIMER_VERSION = 2
         private const val SCAN_DURATION_MILLIS = 12_000L
         private const val AUTO_CONNECT_DELAY_MILLIS = 1_200L
-        private const val ROCKING_UPDATE_DEBOUNCE_MILLIS = 250L
-        private const val ROCKING_UPDATE_CONFIRMATION_MILLIS = 3_000L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
     }
 }
