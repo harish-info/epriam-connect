@@ -52,13 +52,25 @@ class PriamAppTest {
     @Test
     fun boostIsVisibleWithoutExpertMode() {
         composeRule.setContent {
-            EPriamConnectTheme { PriamAppContent(demoState(), PriamActions()) }
+            var state by remember { mutableStateOf(demoState()) }
+            EPriamConnectTheme {
+                PriamAppContent(
+                    state,
+                    PriamActions(
+                        setDriveMode = { mode -> state = state.copy(driveState = DriveState.Observed(mode)) },
+                    ),
+                )
+            }
         }
 
         composeRule.onNodeWithText("Drive assistance").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("Boost").assertIsDisplayed()
         composeRule.onNodeWithText("Eco").assertIsDisplayed()
         composeRule.onNodeWithText("Tour").assertIsDisplayed()
+        composeRule.onNodeWithText("Experimental mode").assertIsNotDisplayed()
+        composeRule.onNodeWithText("Boost").performClick()
+        composeRule.onNodeWithText("Experimental mode").assertIsDisplayed()
+        composeRule.onNodeWithText("not exposed by the official Cybex app", substring = true).assertIsDisplayed()
     }
 
     @Test

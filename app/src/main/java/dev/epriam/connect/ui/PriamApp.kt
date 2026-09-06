@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -489,7 +488,7 @@ private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSetti
             onDismiss = { showDriveModes = false },
             onMode = {
                 actions.setDriveMode(it)
-                showDriveModes = false
+                if (it != DriveMode.BOOST) showDriveModes = false
             },
         )
     }
@@ -799,11 +798,11 @@ private fun DriveModeSheet(state: PriamUiState, onDismiss: () -> Unit, onMode: (
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        modifier = Modifier.fillMaxHeight(),
         sheetState = sheetState,
     ) {
+        val selectedMode = selectedDriveMode(state)
         Column(
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -813,10 +812,13 @@ private fun DriveModeSheet(state: PriamUiState, onDismiss: () -> Unit, onMode: (
             DriveMode.entries.forEach { mode ->
                 DriveModeCard(
                     mode = mode,
-                    selected = selectedDriveMode(state) == mode,
+                    selected = selectedMode == mode,
                     enabled = state.driveState !is DriveState.Applying,
                     onClick = { onMode(mode) },
                 )
+            }
+            AnimatedVisibility(visible = selectedMode == DriveMode.BOOST) {
+                BoostRiskNotice()
             }
         }
     }
@@ -829,14 +831,15 @@ private fun DriveModeCard(mode: DriveMode, selected: Boolean, enabled: Boolean, 
         DriveMode.TOUR -> "Balanced" to "A smooth mix of support and range."
         DriveMode.BOOST -> "Maximum support" to "Extra power for hills and heavier loads."
     }
+    val selectionColor = if (mode.experimental) Color(0xFFE69A16) else MaterialTheme.colorScheme.primary
     Surface(
         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
             .clickable(enabled = enabled, onClick = onClick),
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent,
+        color = if (selected) selectionColor.copy(alpha = 0.10f) else Color.Transparent,
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(
             1.dp,
-            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+            if (selected) selectionColor else MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
         Row(
@@ -851,14 +854,25 @@ private fun DriveModeCard(mode: DriveMode, selected: Boolean, enabled: Boolean, 
             )
             Spacer(Modifier.width(18.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(mode.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(mode.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (mode.experimental) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "EXPERIMENTAL",
+                            color = selectionColor,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(3.dp))
                 Text(summary, color = MaterialTheme.colorScheme.onSurface)
                 Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             Box(
                 modifier = Modifier.size(24.dp).background(
-                    if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    if (selected) selectionColor else Color.Transparent,
                     CircleShape,
                 ).then(
                     if (selected) Modifier else Modifier.background(MaterialTheme.colorScheme.outlineVariant, CircleShape),
@@ -872,6 +886,31 @@ private fun DriveModeCard(mode: DriveMode, selected: Boolean, enabled: Boolean, 
                     ),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun BoostRiskNotice() {
+    val warningColor = Color(0xFFE69A16)
+    Surface(
+        color = warningColor.copy(alpha = 0.12f),
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, warningColor.copy(alpha = 0.70f)),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(
+                "Experimental mode",
+                color = warningColor,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Boost is a hidden mode not exposed by the official Cybex app. Its behavior is undocumented and may vary by stroller firmware. Use it with extra care; switch back to Eco or Tour if anything feels unexpected.",
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
