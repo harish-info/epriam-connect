@@ -13,13 +13,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -38,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.epriam.connect.BuildConfig
@@ -75,6 +74,7 @@ fun PriamApp(
             setProtocolLabEnabled = repository::setProtocolLabEnabled,
             startRocking = onStartRocking,
             stopRocking = repository::stopRocking,
+            acknowledgeStopped = repository::acknowledgeStopped,
         ),
     )
 }
@@ -92,6 +92,7 @@ internal data class PriamActions(
     val setProtocolLabEnabled: (Boolean) -> Unit = {},
     val startRocking: () -> Unit = {},
     val stopRocking: () -> Unit = {},
+    val acknowledgeStopped: () -> Unit = {},
 )
 
 @Composable
@@ -175,6 +176,13 @@ private fun Header(state: PriamUiState) {
 @Composable
 private fun ConnectionCard(state: PriamUiState, actions: PriamActions) {
     SectionCard("Connect") {
+        if (state.rockingState is RockingState.Unconfirmed) {
+            Text(state.rockingState.message, color = MaterialTheme.colorScheme.error)
+            Button(onClick = actions.acknowledgeStopped, modifier = Modifier.fillMaxWidth()) {
+                Text("I verified the stroller stopped")
+            }
+            HorizontalDivider()
+        }
         Button(
             onClick = actions.scan,
             enabled = state.connectionPhase !in setOf(ConnectionPhase.SCANNING, ConnectionPhase.CONNECTING),
@@ -194,7 +202,11 @@ private fun ConnectionCard(state: PriamUiState, actions: PriamActions) {
             }
         }
         if (BuildConfig.DEBUG) {
-            TextButton(onClick = actions.enterDemo, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            TextButton(
+                onClick = actions.enterDemo,
+                enabled = state.connectionPhase !in setOf(ConnectionPhase.CONNECTING, ConnectionPhase.DISCOVERING),
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
                 Text("Open demo without a stroller")
             }
         }
@@ -213,13 +225,7 @@ private fun Dashboard(state: PriamUiState, actions: PriamActions) {
 private fun ConnectionSummary(state: PriamUiState, disconnect: () -> Unit) {
     SectionCard(if (state.isDemo) "Demo connection" else "Stroller") {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Card(shape = CircleShape, colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primary)) {}
-            }
+            Box(Modifier.size(12.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(state.connectedDeviceName ?: "e-Priam", fontWeight = FontWeight.SemiBold)
@@ -229,7 +235,11 @@ private fun ConnectionSummary(state: PriamUiState, disconnect: () -> Unit) {
                 Text("$it%", style = MaterialTheme.typography.titleLarge)
             }
         }
-        TextButton(onClick = disconnect, modifier = Modifier.align(Alignment.End)) { Text("Disconnect") }
+        TextButton(
+            onClick = disconnect,
+            enabled = !state.motionMayBeActive,
+            modifier = Modifier.align(Alignment.End),
+        ) { Text(if (state.motionMayBeActive) "Stop rocking first" else "Disconnect") }
     }
 }
 

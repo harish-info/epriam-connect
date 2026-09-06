@@ -1,13 +1,18 @@
 # ePriam Connect
 
-Planning workspace for an unofficial, offline Android controller for the Cybex
-e-PRIAM stroller.
+An unofficial, offline Android controller for the Cybex e-PRIAM stroller.
 
 ## Current status
 
-Research and implementation planning are complete. No Android application has
-been implemented yet. Motor-control writes are deliberately gated on a short
-hardware-validation session with the target stroller.
+The first native Android implementation is complete and emulator-tested. It
+includes direct BLE discovery, connection state, battery estimates, Eco/Tour
+assistance, experimental Boost, rocking intensity, timers from 5 minutes to 3
+hours, a persistent Stop notification, diagnostics, and an offline demo mode.
+
+The app has not yet been connected to the target stroller. Release builds keep
+motor writes locked until the [hardware validation runbook](docs/hardware-validation.md)
+has been completed. Debug builds expose an explicit **Protocol Lab** switch for
+careful bench testing.
 
 The key protocol finding is that the two reference projects do **not** agree on
 the rocking packet. The older `python-priam` layout is internally consistent
@@ -28,10 +33,32 @@ the resulting duration is not the duration shown by its UI.
 - [Hardware validation runbook](docs/hardware-validation.md)
 - [Android implementation plan](docs/android-implementation-plan.md)
 
+## Build and test
+
+Requirements: JDK 17 and Android SDK 36.
+
+```bash
+./gradlew testDebugUnitTest assembleDebug lintDebug
+./gradlew connectedDebugAndroidTest   # with an emulator or device attached
+```
+
+Install `app/build/outputs/apk/debug/app-debug.apk`, accept the safety screen,
+then use **Open demo without a stroller** to exercise all non-Bluetooth flows.
+
+## Safety boundary
+
+- Never test motor commands with a child in the stroller.
+- Engage the parking brake, lock the front wheels, and use level clear ground.
+- Stay beside the stroller for every rocking session.
+- Treat timers above 30 minutes and Boost as undocumented experiments.
+- If command status is unconfirmed, physically verify that motion stopped.
+
 ## Immediate next step
 
-Run the hardware-validation gate with an empty stroller on a flat, clear floor.
-Do not implement extended timers or Boost from the newer ESP packet labels.
+Run the hardware-validation gate with an empty stroller on a flat, clear floor,
+capture the official start/stop packets, and confirm both service UUID variants.
+Only then change `HARDWARE_PROTOCOL_VALIDATED` in `PriamRepository` and enable
+motor writes in release builds.
 
 ## Positioning
 

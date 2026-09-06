@@ -90,7 +90,7 @@ class PriamBleManager(
         writeCharacteristic(
             driveCharacteristic,
             bytes,
-            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+            driveCharacteristic.writeType(),
         ).suspend()
     }
 
@@ -98,7 +98,7 @@ class PriamBleManager(
         writeCharacteristic(
             rockingCharacteristic,
             bytes,
-            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+            rockingCharacteristic.writeType(),
         ).suspend()
     }
 
@@ -126,4 +126,11 @@ class PriamBleManager(
 
     private fun BluetoothGattCharacteristic.isNotifiable(): Boolean =
         properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0
+
+    private fun BluetoothGattCharacteristic?.writeType(): Int =
+        if (this != null && properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0) {
+            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        } else {
+            BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        }
 }

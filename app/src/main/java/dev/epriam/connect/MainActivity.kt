@@ -38,10 +38,11 @@ class MainActivity : ComponentActivity() {
 
     private val notificationsPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) {
+    ) { granted ->
         if (startRockingAfterNotificationPrompt) {
             startRockingAfterNotificationPrompt = false
-            beginRockingSession()
+            if (granted) beginRockingSession()
+            else repository.reportActionError("Notification permission is required for the persistent Stop control")
         }
     }
 
@@ -88,12 +89,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun beginRockingSession() {
+        repository.startRocking()
         ContextCompat.startForegroundService(
             this,
             Intent(this, RockingSessionService::class.java)
                 .setAction(RockingSessionService.ACTION_START),
         )
-        repository.startRocking()
     }
 
     private fun bluetoothAdapter(): BluetoothAdapter? =

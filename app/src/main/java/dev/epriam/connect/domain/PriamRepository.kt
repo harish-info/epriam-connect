@@ -45,6 +45,8 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     fun reportError(message: String) = fail(message)
 
+    fun reportActionError(message: String) = actionError(message)
+
     @SuppressLint("MissingPermission")
     fun startScan() {
         leaveDemo()
@@ -123,6 +125,10 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     fun disconnect() {
+        if (_state.value.motionMayBeActive) {
+            actionError("Stop rocking and verify the stroller is still before disconnecting")
+            return
+        }
         scanner.stop()
         scanTimeout?.cancel()
         demoCountdown?.cancel()
@@ -177,10 +183,17 @@ class PriamRepository(context: Context) : PriamBleListener {
     fun setProtocolLabEnabled(enabled: Boolean) =
         _state.update { it.copy(protocolLabEnabled = BuildConfig.ENABLE_PROTOCOL_LAB && enabled) }
 
+    fun acknowledgeStopped() {
+        if (_state.value.rockingState is RockingState.Unconfirmed) {
+            _state.update { it.copy(rockingState = RockingState.Off, statusMessage = connectionStatus(it)) }
+            addDiagnostic("Operator verified the stroller is stopped")
+        }
+    }
+
     fun setDriveMode(mode: DriveMode) {
         if (!_state.value.isReady) return
         if (mode.experimental && !_state.value.expertMode) {
-            fail("Enable Expert mode before using experimental Boost")
+            actionError("Enable Expert mode before using experimental Boost")
             return
         }
         if (_state.value.isDemo) {
@@ -196,13 +209,13 @@ class PriamRepository(context: Context) : PriamBleListener {
                     _state.update { it.copy(driveState = DriveState.Commanded(mode)) }
                     addDiagnostic("Drive write ${PriamProtocol.toHex(packet)} (${mode.displayName})")
                 }
-                .onFailure { fail("Drive mode write failed: ${it.message}") }
+                .onFailure { actionError("Drive mode write failed: ${it.message}") }
         }
     }
 
     fun startRocking() {
         val current = _state.value
-        if (!current.isReady || current.isRocking) return
+        if (!current.isReady || current.motionMayBeActive) return
         val durationSeconds = current.selectedDurationMinutes * 60
         _state.update {
             it.copy(rockingState = RockingState.Starting(current.selectedIntensity, durationSeconds))
@@ -234,8 +247,12 @@ class PriamRepository(context: Context) : PriamBleListener {
                     }
                 }
                 .onFailure {
-                    fail("Rocking write failed: ${it.message}")
-                    _state.update { state -> state.copy(rockingState = RockingState.Off) }
+                    actionError("Rocking write failed: ${it.message}")
+                    _state.update { state ->
+                        state.copy(rockingState = RockingState.Unconfirmed(
+                            "Rocking write was not confirmed; physically verify the stroller is still",
+                        ))
+                    }
                 }
         }
     }
@@ -261,7 +278,14 @@ class PriamRepository(context: Context) : PriamBleListener {
                         } else it
                     }
                 }
-                .onFailure { fail("Stop write failed: ${it.message}") }
+                .onFailure {
+                    actionError("Stop write failed: ${it.message}")
+                    _state.update { state ->
+                        state.copy(rockingState = RockingState.Unconfirmed(
+                            "Stop was not confirmed; physically verify the stroller stopped",
+                        ))
+                    }
+                }
         }
     }
 
@@ -280,8 +304,12 @@ class PriamRepository(context: Context) : PriamBleListener {
         _state.update {
             it.copy(
                 connectionPhase = ConnectionPhase.ERROR,
-                statusMessage = "Stroller disconnected (reason $reason)",
-                rockingState = if (it.isRocking) {
+                statusMessage = if (it.motionMayBeActive) {
+                    "Connection lost — physically verify the stroller stopped"
+                } else {
+                    "Stroller disconnected (reason $reason)"
+                },
+                rockingState = if (it.motionMayBeActive) {
                     RockingState.Unconfirmed("Connection lost; physically verify the stroller stopped")
                 } else RockingState.Off,
             )
@@ -341,7 +369,7 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     private fun writesAllowed(): Boolean {
         if (HARDWARE_PROTOCOL_VALIDATED || BuildConfig.DEBUG && _state.value.protocolLabEnabled) return true
-        fail("Motor writes are locked until Protocol Lab is enabled and physical safety validation is complete")
+        actionError("Motor writes are locked until Protocol Lab is enabled and physical safety validation is complete")
         return false
     }
 
@@ -370,6 +398,17 @@ class PriamRepository(context: Context) : PriamBleListener {
     private fun fail(message: String) {
         _state.update { it.copy(connectionPhase = ConnectionPhase.ERROR, statusMessage = message) }
         addDiagnostic(message)
+    }
+
+    private fun actionError(message: String) {
+        _state.update { it.copy(statusMessage = message) }
+        addDiagnostic(message)
+    }
+
+    private fun connectionStatus(state: PriamUiState): String = when (state.connectionPhase) {
+        ConnectionPhase.READY -> "Connected"
+        ConnectionPhase.DEMO -> "Demo stroller connected"
+        else -> state.statusMessage
     }
 
     private fun addDiagnostic(message: String) {

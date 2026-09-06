@@ -66,4 +66,8 @@ data class PriamUiState(
 ) {
     val isReady: Boolean = connectionPhase == ConnectionPhase.READY || connectionPhase == ConnectionPhase.DEMO
     val isRocking: Boolean = rockingState is RockingState.Starting || rockingState is RockingState.Active
+    val motionMayBeActive: Boolean = rockingState is RockingState.Starting ||
+        rockingState is RockingState.Active ||
+        rockingState is RockingState.Stopping ||
+        rockingState is RockingState.Unconfirmed
 }

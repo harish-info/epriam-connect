@@ -42,6 +42,7 @@ class RockingSessionService : Service() {
                     is RockingState.Active -> startInForeground(formatRemaining(rocking.remainingSeconds))
                     is RockingState.Starting -> startInForeground("Starting…")
                     is RockingState.Stopping -> startInForeground("Stopping…")
+                    is RockingState.Unconfirmed -> startInForeground("Status unconfirmed — verify stroller")
                     else -> stopSelf()
                 }
             }
