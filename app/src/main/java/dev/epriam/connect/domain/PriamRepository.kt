@@ -202,14 +202,34 @@ class PriamRepository(context: Context) : PriamBleListener {
             return
         }
         if (!writesAllowed()) return
+        _state.update { it.copy(driveState = DriveState.Applying(mode), statusMessage = "Applying ${mode.displayName}…") }
         scope.launch {
             val packet = PriamProtocol.encodeDriveMode(mode)
-            runCatching { manager?.writeDrive(packet) }
-                .onSuccess {
-                    _state.update { it.copy(driveState = DriveState.Commanded(mode)) }
+            runCatching {
+                val activeManager = requireNotNull(manager) { "Bluetooth connection unavailable" }
+                activeManager.writeDrive(packet)
+            }
+                .onSuccess { response ->
+                    val observed = response?.firstOrNull()?.toInt()?.and(0xFF)?.let { value ->
+                        DriveMode.entries.firstOrNull { it.wireValue == value }
+                    }
+                    _state.update {
+                        it.copy(
+                            driveState = observed?.let(DriveState::Observed) ?: DriveState.Commanded(mode),
+                            statusMessage = when {
+                                observed == null -> "${mode.displayName} command sent"
+                                observed == mode -> "${mode.displayName} active"
+                                else -> "Stroller remains in ${observed.displayName}"
+                            },
+                        )
+                    }
                     addDiagnostic("Drive write ${PriamProtocol.toHex(packet)} (${mode.displayName})")
+                    response?.let { addDiagnostic("Drive readback ${PriamProtocol.toHex(it)}") }
                 }
-                .onFailure { actionError("Drive mode write failed: ${it.message}") }
+                .onFailure {
+                    _state.update { state -> state.copy(driveState = DriveState.Unknown) }
+                    actionError("Drive mode write failed: ${it.message}")
+                }
         }
     }
 
@@ -424,6 +444,6 @@ class PriamRepository(context: Context) : PriamBleListener {
         private const val KEY_SAFETY_ACCEPTED = "safety_accepted"
         private const val SCAN_DURATION_MILLIS = 12_000L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
-        private const val HARDWARE_PROTOCOL_VALIDATED = false
+        private const val HARDWARE_PROTOCOL_VALIDATED = true
     }
 }

@@ -247,6 +247,7 @@ private fun ConnectionSummary(state: PriamUiState, disconnect: () -> Unit) {
 @Composable
 private fun DriveModeCard(state: PriamUiState, actions: PriamActions) {
     val selected = when (val drive = state.driveState) {
+        is DriveState.Applying -> drive.mode
         is DriveState.Commanded -> drive.mode
         is DriveState.Observed -> drive.mode
         DriveState.Unknown -> null

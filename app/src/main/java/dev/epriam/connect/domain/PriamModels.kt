@@ -23,6 +23,7 @@ data class DeviceCandidate(
 
 sealed interface DriveState {
     data object Unknown : DriveState
+    data class Applying(val mode: DriveMode) : DriveState
     data class Commanded(val mode: DriveMode) : DriveState
     data class Observed(val mode: DriveMode) : DriveState
 }

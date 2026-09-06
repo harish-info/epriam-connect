@@ -57,6 +57,18 @@ class PriamBleManager(
         subscribe(statusCharacteristic, listener::onStatus)
         subscribe(driveCharacteristic, listener::onDriveMode)
         subscribe(rockingCharacteristic, listener::onRocking)
+        read(statusCharacteristic, listener::onStatus)
+        read(driveCharacteristic, listener::onDriveMode)
+    }
+
+    private fun read(
+        characteristic: BluetoothGattCharacteristic?,
+        onValue: (ByteArray) -> Unit,
+    ) {
+        if (characteristic?.isReadable() != true) return
+        readCharacteristic(characteristic)
+            .with { _, data -> data.value?.copyOf()?.let(onValue) }
+            .enqueue()
     }
 
     private fun subscribe(
@@ -86,12 +98,18 @@ class PriamBleManager(
             .suspend()
     }
 
-    suspend fun writeDrive(bytes: ByteArray) {
+    suspend fun writeDrive(bytes: ByteArray): ByteArray? {
+        val characteristic = requireNotNull(driveCharacteristic) { "Drive characteristic unavailable" }
         writeCharacteristic(
-            driveCharacteristic,
+            characteristic,
             bytes,
-            driveCharacteristic.writeType(),
+            characteristic.writeType(),
         ).suspend()
+        return if (characteristic.isReadable()) {
+            readCharacteristic(characteristic).suspend().value?.copyOf()
+        } else {
+            null
+        }
     }
 
     suspend fun writeRocking(bytes: ByteArray) {
@@ -126,6 +144,9 @@ class PriamBleManager(
 
     private fun BluetoothGattCharacteristic.isNotifiable(): Boolean =
         properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0
+
+    private fun BluetoothGattCharacteristic.isReadable(): Boolean =
+        properties and BluetoothGattCharacteristic.PROPERTY_READ != 0
 
     private fun BluetoothGattCharacteristic?.writeType(): Int =
         if (this != null && properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0) {
