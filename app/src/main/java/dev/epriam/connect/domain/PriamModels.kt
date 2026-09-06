@@ -14,6 +14,12 @@ enum class ConnectionPhase {
     ERROR,
 }
 
+enum class ThemeMode {
+    SYSTEM,
+    LIGHT,
+    DARK,
+}
+
 data class DeviceCandidate(
     val id: String,
     val name: String,
@@ -60,8 +66,7 @@ data class PriamUiState(
     val rockingState: RockingState = RockingState.Off,
     val selectedIntensity: RockingIntensity = RockingIntensity.LOW,
     val selectedDurationMinutes: Int = 15,
-    val expertMode: Boolean = false,
-    val protocolLabEnabled: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val isDemo: Boolean = false,
     val diagnostics: List<DiagnosticEvent> = emptyList(),
 ) {

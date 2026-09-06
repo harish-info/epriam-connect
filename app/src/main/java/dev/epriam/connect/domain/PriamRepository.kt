@@ -2,7 +2,6 @@ package dev.epriam.connect.domain
 
 import android.annotation.SuppressLint
 import android.content.Context
-import dev.epriam.connect.BuildConfig
 import dev.epriam.connect.ble.PriamBleListener
 import dev.epriam.connect.ble.PriamBleManager
 import dev.epriam.connect.ble.PriamScanner
@@ -34,12 +33,21 @@ class PriamRepository(context: Context) : PriamBleListener {
     private val disconnectExpected = AtomicBoolean(false)
 
     private val _state = MutableStateFlow(
-        PriamUiState(safetyAccepted = preferences.getBoolean(KEY_SAFETY_ACCEPTED, false)),
+        PriamUiState(
+            safetyAccepted = preferences.getInt(KEY_DISCLAIMER_VERSION, 0) >= CURRENT_DISCLAIMER_VERSION,
+            selectedIntensity = RockingIntensity.fromWire(
+                preferences.getInt(KEY_INTENSITY, RockingIntensity.LOW.wireValue),
+            ) ?: RockingIntensity.LOW,
+            selectedDurationMinutes = preferences.getInt(KEY_DURATION_MINUTES, 15).coerceIn(5, 180),
+            themeMode = preferences.getString(KEY_THEME_MODE, null)
+                ?.let { value -> runCatching { ThemeMode.valueOf(value) }.getOrNull() }
+                ?: ThemeMode.SYSTEM,
+        ),
     )
     val state: StateFlow<PriamUiState> = _state.asStateFlow()
 
     fun acceptSafety() {
-        preferences.edit().putBoolean(KEY_SAFETY_ACCEPTED, true).apply()
+        preferences.edit().putInt(KEY_DISCLAIMER_VERSION, CURRENT_DISCLAIMER_VERSION).apply()
         _state.update { it.copy(safetyAccepted = true) }
     }
 
@@ -171,17 +179,21 @@ class PriamRepository(context: Context) : PriamBleListener {
         addDiagnostic("Demo mode started; no Bluetooth writes will be sent")
     }
 
-    fun setIntensity(intensity: RockingIntensity) =
+    fun setIntensity(intensity: RockingIntensity) {
+        preferences.edit().putInt(KEY_INTENSITY, intensity.wireValue).apply()
         _state.update { it.copy(selectedIntensity = intensity) }
+    }
 
-    fun setDuration(minutes: Int) =
-        _state.update { it.copy(selectedDurationMinutes = minutes.coerceIn(1, 180)) }
+    fun setDuration(minutes: Int) {
+        val bounded = minutes.coerceIn(5, 180)
+        preferences.edit().putInt(KEY_DURATION_MINUTES, bounded).apply()
+        _state.update { it.copy(selectedDurationMinutes = bounded) }
+    }
 
-    fun setExpertMode(enabled: Boolean) =
-        _state.update { it.copy(expertMode = enabled) }
-
-    fun setProtocolLabEnabled(enabled: Boolean) =
-        _state.update { it.copy(protocolLabEnabled = BuildConfig.ENABLE_PROTOCOL_LAB && enabled) }
+    fun setThemeMode(themeMode: ThemeMode) {
+        preferences.edit().putString(KEY_THEME_MODE, themeMode.name).apply()
+        _state.update { it.copy(themeMode = themeMode) }
+    }
 
     fun acknowledgeStopped() {
         if (_state.value.rockingState is RockingState.Unconfirmed) {
@@ -192,16 +204,11 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     fun setDriveMode(mode: DriveMode) {
         if (!_state.value.isReady) return
-        if (mode.experimental && !_state.value.expertMode) {
-            actionError("Enable Expert mode before using experimental Boost")
-            return
-        }
         if (_state.value.isDemo) {
             _state.update { it.copy(driveState = DriveState.Observed(mode)) }
             addDiagnostic("Demo drive mode: ${mode.displayName}")
             return
         }
-        if (!writesAllowed()) return
         _state.update { it.copy(driveState = DriveState.Applying(mode), statusMessage = "Applying ${mode.displayName}…") }
         scope.launch {
             val packet = PriamProtocol.encodeDriveMode(mode)
@@ -242,10 +249,6 @@ class PriamRepository(context: Context) : PriamBleListener {
         }
         if (current.isDemo) {
             runDemoCountdown(current.selectedIntensity, durationSeconds)
-            return
-        }
-        if (!writesAllowed()) {
-            _state.update { it.copy(rockingState = RockingState.Off) }
             return
         }
         scope.launch {
@@ -387,12 +390,6 @@ class PriamRepository(context: Context) : PriamBleListener {
         if (message.contains("Error", ignoreCase = true)) addDiagnostic("BLE: $message")
     }
 
-    private fun writesAllowed(): Boolean {
-        if (HARDWARE_PROTOCOL_VALIDATED || BuildConfig.DEBUG && _state.value.protocolLabEnabled) return true
-        actionError("Motor writes are locked until Protocol Lab is enabled and physical safety validation is complete")
-        return false
-    }
-
     private fun runDemoCountdown(intensity: RockingIntensity, durationSeconds: Int) {
         demoCountdown?.cancel()
         demoCountdown = scope.launch {
@@ -411,7 +408,12 @@ class PriamRepository(context: Context) : PriamBleListener {
     private fun leaveDemo() {
         demoCountdown?.cancel()
         _state.update {
-            if (!it.isDemo) it else PriamUiState(safetyAccepted = it.safetyAccepted)
+            if (!it.isDemo) it else PriamUiState(
+                safetyAccepted = it.safetyAccepted,
+                selectedIntensity = it.selectedIntensity,
+                selectedDurationMinutes = it.selectedDurationMinutes,
+                themeMode = it.themeMode,
+            )
         }
     }
 
@@ -441,9 +443,12 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     companion object {
-        private const val KEY_SAFETY_ACCEPTED = "safety_accepted"
+        private const val KEY_DISCLAIMER_VERSION = "disclaimer_version"
+        private const val KEY_INTENSITY = "rocking_intensity"
+        private const val KEY_DURATION_MINUTES = "rocking_duration_minutes"
+        private const val KEY_THEME_MODE = "theme_mode"
+        private const val CURRENT_DISCLAIMER_VERSION = 2
         private const val SCAN_DURATION_MILLIS = 12_000L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
-        private const val HARDWARE_PROTOCOL_VALIDATED = true
     }
 }

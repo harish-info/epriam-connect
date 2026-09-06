@@ -13,6 +13,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
+import androidx.core.view.WindowCompat
+import dev.epriam.connect.domain.ThemeMode
 import dev.epriam.connect.service.RockingSessionService
 import dev.epriam.connect.theme.EPriamConnectTheme
 import dev.epriam.connect.ui.PriamApp
@@ -50,7 +56,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            EPriamConnectTheme {
+            val state by repository.state.collectAsState()
+            val darkTheme = when (state.themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+            EPriamConnectTheme(darkTheme = darkTheme) {
                 PriamApp(
                     repository = repository,
                     onScan = ::requestScan,

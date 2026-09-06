@@ -1,14 +1,15 @@
 package dev.epriam.connect.ui
 
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import dev.epriam.connect.domain.ConnectionPhase
 import dev.epriam.connect.domain.DriveState
 import dev.epriam.connect.domain.PriamUiState
@@ -22,51 +23,80 @@ class PriamAppTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun onboardingShowsIndependentControllerAndSafetyChecks() {
+    fun disclaimerMakesResponsibilityExplicit() {
         composeRule.setContent {
             EPriamConnectTheme { PriamAppContent(PriamUiState(), PriamActions()) }
         }
 
-        composeRule.onNodeWithText("Before you connect").assertIsDisplayed()
-        composeRule.onNodeWithText(
-            "This is an independent, experimental controller. It is not affiliated with Cybex.",
-        ).assertIsDisplayed()
-        composeRule.onNodeWithText("I understand — continue").assertIsDisplayed()
+        composeRule.onNodeWithText("You are in control.").assertIsDisplayed()
+        composeRule.onNodeWithText("Accept responsibility").assertIsDisplayed()
     }
 
     @Test
-    fun demoDashboardExposesExtendedDurations() {
+    fun connectionGuideWarnsAboutOfficialAppCompetition() {
+        composeRule.setContent {
+            EPriamConnectTheme { PriamAppContent(PriamUiState(safetyAccepted = true), PriamActions()) }
+        }
+
+        composeRule.onNodeWithText(
+            "In the official Cybex app, disconnect the stroller — or close the app completely",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("Scan for e-Priam").assertIsDisplayed()
+    }
+
+    @Test
+    fun boostIsVisibleWithoutExpertMode() {
         composeRule.setContent {
             EPriamConnectTheme { PriamAppContent(demoState(), PriamActions()) }
         }
 
-        composeRule.onNodeWithText("Demo connection").assertIsDisplayed()
-        composeRule.onNodeWithText("1 hr").assertIsDisplayed()
-        composeRule.onNodeWithText("3 hr").assertIsDisplayed()
+        composeRule.onNodeWithText("Drive assistance").performScrollTo().performClick()
+        composeRule.onNodeWithText("BOOST").assertIsDisplayed()
+        composeRule.onNodeWithText("ECO").assertIsDisplayed()
+        composeRule.onNodeWithText("TOUR").assertIsDisplayed()
     }
 
     @Test
-    fun extendedDurationRequiresConfirmation() {
+    fun extendedDurationShowsInlineWarningWithoutConfirmation() {
+        var started = false
         composeRule.setContent {
             var state by remember { mutableStateOf(demoState()) }
             EPriamConnectTheme {
                 PriamAppContent(
                     state,
-                    PriamActions(setDuration = { state = state.copy(selectedDurationMinutes = it) }),
+                    PriamActions(
+                        setDuration = { state = state.copy(selectedDurationMinutes = it) },
+                        startRocking = { started = true },
+                    ),
                 )
             }
         }
 
-        composeRule.onNodeWithText("1 hr").performClick()
-        composeRule.onNodeWithText("Start rocking").performScrollTo().performClick()
-        composeRule.onNodeWithText("Start an extended session?").assertIsDisplayed()
-        composeRule.onNodeWithText("Start 60 minutes").assertIsDisplayed()
+        composeRule.onNodeWithText("60").performScrollTo().performClick()
+        composeRule.onNodeWithText("Beyond Cybex’s 30-minute limit · stay nearby")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("START · 60 MIN · LOW").performScrollTo().performClick()
+        composeRule.runOnIdle { assert(started) }
+        composeRule.onNodeWithText("Start an extended session?").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun settingsKeepsDeveloperDetailsAwayFromMainControls() {
+        composeRule.setContent {
+            EPriamConnectTheme { PriamAppContent(demoState(), PriamActions()) }
+        }
+
+        composeRule.onNodeWithText("PROTOCOL LOG", substring = true).assertIsNotDisplayed()
+        composeRule.onNodeWithText("SETTINGS").performClick()
+        composeRule.onNodeWithText("Appearance").assertIsDisplayed()
+        composeRule.onNodeWithText("PROTOCOL LOG", substring = true).assertIsDisplayed()
     }
 
     private fun demoState() = PriamUiState(
         safetyAccepted = true,
         connectionPhase = ConnectionPhase.DEMO,
-        statusMessage = "Demo stroller connected",
+        statusMessage = "Connected · controls ready",
         connectedDeviceName = "Demo e-Priam",
         batteryPercent = 74,
         isDemo = true,
