@@ -43,6 +43,8 @@ class PriamRepository(context: Context) : PriamBleListener {
         _state.update { it.copy(safetyAccepted = true) }
     }
 
+    fun reportError(message: String) = fail(message)
+
     @SuppressLint("MissingPermission")
     fun startScan() {
         leaveDemo()
