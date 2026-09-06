@@ -1,9 +1,12 @@
 package dev.epriam.connect.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
@@ -13,11 +16,14 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
 import dev.epriam.connect.domain.ConnectionPhase
 import dev.epriam.connect.domain.DeviceCandidate
 import dev.epriam.connect.domain.DriveState
 import dev.epriam.connect.domain.PriamUiState
+import dev.epriam.connect.domain.RockingState
 import dev.epriam.connect.protocol.DriveMode
+import dev.epriam.connect.protocol.RockingIntensity
 import dev.epriam.connect.theme.EPriamConnectTheme
 import org.junit.Rule
 import org.junit.Test
@@ -137,6 +143,29 @@ class PriamAppTest {
 
         composeRule.onNodeWithText("Exit preview").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("Scan for e-Priam").assertIsDisplayed()
+    }
+
+    @Test
+    fun activeStopActionIsVisibleWithoutScrollingOnCompactScreen() {
+        composeRule.setContent {
+            EPriamConnectTheme {
+                Box(Modifier.size(width = 360.dp, height = 640.dp)) {
+                    PriamAppContent(
+                        demoState().copy(
+                            rockingState = RockingState.Active(
+                                intensity = RockingIntensity.MEDIUM,
+                                remainingSeconds = 29 * 60 + 59,
+                                configuredSeconds = 30 * 60,
+                                linkLossFlagSet = true,
+                            ),
+                        ),
+                        PriamActions(),
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Stop Rocking").assertIsDisplayed()
     }
 
     @Test

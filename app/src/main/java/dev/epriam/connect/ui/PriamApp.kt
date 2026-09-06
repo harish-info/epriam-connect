@@ -516,9 +516,9 @@ private fun ConnectionScreen(state: PriamUiState, actions: PriamActions, onSetti
 private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSettings: () -> Unit) {
     var showDriveModes by remember { mutableStateOf(false) }
     BrandHeader(state, onSettings, actions.exitDemo)
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(2.dp))
     RockingHero(state)
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(8.dp))
     if (state.rockingState !is RockingState.Unconfirmed) {
         RockingSetup(state, actions)
     } else {
@@ -528,9 +528,9 @@ private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSetti
             }
         }
     }
-    Spacer(Modifier.height(22.dp))
+    Spacer(Modifier.height(14.dp))
     DriveModeLauncher(state = state, onClick = { showDriveModes = true })
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(16.dp))
     if (showDriveModes) {
         DriveModeSheet(
             state = state,
@@ -553,8 +553,8 @@ private fun BrandHeader(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StrollerAppBadge(Modifier.size(46.dp))
-        Spacer(Modifier.width(12.dp))
+        StrollerAppBadge(Modifier.size(42.dp))
+        Spacer(Modifier.width(10.dp))
         Column {
             Text("e-Priam", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -572,7 +572,7 @@ private fun BrandHeader(
             TextButton(onClick = onExitDemo) { Text("Exit preview") }
         } else {
             state.batteryPercent?.let { battery ->
-                BatteryGlyph(Modifier.size(25.dp), MaterialTheme.colorScheme.primary)
+                BatteryGlyph(Modifier.size(22.dp), MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(6.dp))
                 Text("$battery%", style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.width(14.dp))
@@ -583,7 +583,7 @@ private fun BrandHeader(
                 .semantics { contentDescription = "Settings" },
             contentAlignment = Alignment.Center,
         ) {
-            SettingsGlyph(Modifier.size(28.dp), MaterialTheme.colorScheme.onSurface)
+            SettingsGlyph(Modifier.size(25.dp), MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -713,12 +713,22 @@ private fun RockingHero(state: PriamUiState) {
         modifier = Modifier.fillMaxWidth().animateContentSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(modifier = Modifier.fillMaxWidth().height(206.dp), contentAlignment = Alignment.Center) {
-            RockingRings(active = active || busy, modifier = Modifier.fillMaxWidth().height(88.dp).align(Alignment.BottomCenter))
+        Box(
+            modifier = Modifier.fillMaxWidth().height(if (active || busy) 126.dp else 174.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            RockingRings(
+                active = active || busy,
+                modifier = Modifier.fillMaxWidth().height(if (active || busy) 66.dp else 76.dp)
+                    .align(Alignment.BottomCenter),
+            )
             Image(
                 painter = painterResource(heroImage),
                 contentDescription = null,
-                modifier = Modifier.size(width = 235.dp, height = 185.dp),
+                modifier = Modifier.size(
+                    width = if (active || busy) 172.dp else 210.dp,
+                    height = if (active || busy) 128.dp else 158.dp,
+                ),
                 contentScale = ContentScale.Fit,
                 colorFilter = if (darkTheme) {
                     ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
@@ -729,7 +739,7 @@ private fun RockingHero(state: PriamUiState) {
         }
         Text(
             if (active) "Rocking in progress" else if (busy) "Preparing rocking" else "Ready to rock",
-            style = if (active || busy) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineLarge,
+            style = if (active || busy) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineMedium,
             fontWeight = if (active || busy) FontWeight.Medium else FontWeight.Bold,
             textAlign = TextAlign.Center,
         )
@@ -737,7 +747,7 @@ private fun RockingHero(state: PriamUiState) {
             RollingTimer(activeState.remainingSeconds)
         }
         if (busy) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), strokeCap = StrokeCap.Square)
         }
     }
@@ -750,7 +760,7 @@ private fun RollingTimer(seconds: Int) {
             if (character == ':') {
                 Text(
                     character.toString(),
-                    style = MaterialTheme.typography.displayLarge,
+                    style = MaterialTheme.typography.displayMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
@@ -766,7 +776,7 @@ private fun RollingTimer(seconds: Int) {
                 ) { digit ->
                     Text(
                         digit.toString(),
-                        style = MaterialTheme.typography.displayLarge,
+                        style = MaterialTheme.typography.displayMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
@@ -819,16 +829,16 @@ private fun DriveModeLauncher(state: PriamUiState, onClick: () -> Unit) {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 17.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Image(
                 painter = painterResource(R.drawable.ic_drive_assistance),
                 contentDescription = null,
-                modifier = Modifier.size(34.dp),
+                modifier = Modifier.size(30.dp),
                 colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
             )
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("Drive assistance", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                 Text(
@@ -991,33 +1001,33 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
             )
         }
     }
-    Spacer(Modifier.height(18.dp))
+    Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Duration", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Duration", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
-        Text("${state.selectedDurationMinutes} min", style = MaterialTheme.typography.titleLarge)
+        Text("${state.selectedDurationMinutes} min", style = MaterialTheme.typography.titleMedium)
     }
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(6.dp))
     Surface(
         color = Color.Transparent,
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(64.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             DurationStepButton("−", enabled = controlsEnabled && state.selectedDurationMinutes > 5) {
                 actions.setDuration((state.selectedDurationMinutes - 5).coerceAtLeast(5))
             }
-            Text("${state.selectedDurationMinutes}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text("${state.selectedDurationMinutes}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             DurationStepButton("+", enabled = controlsEnabled && state.selectedDurationMinutes < 180) {
                 actions.setDuration((state.selectedDurationMinutes + 5).coerceAtMost(180))
             }
         }
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         listOf(30, 60, 90, 120, 180).forEach { minutes ->
             Surface(
@@ -1034,7 +1044,7 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
             ) {
                 Text(
                     minutes.toString(),
-                    modifier = Modifier.padding(vertical = 15.dp),
+                    modifier = Modifier.padding(vertical = 12.dp),
                     textAlign = TextAlign.Center,
                     color = if (state.selectedDurationMinutes == minutes) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1065,11 +1075,11 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
             modifier = Modifier.padding(top = 12.dp),
         )
     }
-    Spacer(Modifier.height(22.dp))
+    Spacer(Modifier.height(16.dp))
     Button(
         onClick = if (active) actions.stopRocking else actions.startRocking,
         enabled = !busy,
-        modifier = Modifier.fillMaxWidth().height(62.dp),
+        modifier = Modifier.fillMaxWidth().height(56.dp),
         shape = MaterialTheme.shapes.medium,
         colors = if (active) {
             ButtonDefaults.buttonColors(
@@ -1083,10 +1093,10 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
         Image(
             painter = painterResource(if (active) R.drawable.ic_rocking_stop else R.drawable.ic_rocking_play),
             contentDescription = null,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(20.dp),
             colorFilter = ColorFilter.tint(if (active) Color.White else MaterialTheme.colorScheme.onPrimary),
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Text(if (active) "Stop Rocking" else if (busy) "Please wait…" else "Start Rocking")
     }
 }
@@ -1109,12 +1119,12 @@ private fun IntensityTile(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            IntensityWave(intensity, selected, Modifier.fillMaxWidth().height(20.dp))
-            Spacer(Modifier.height(5.dp))
-            Text(intensity.displayName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            IntensityWave(intensity, selected, Modifier.fillMaxWidth().height(17.dp))
+            Spacer(Modifier.height(3.dp))
+            Text(intensity.displayName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
             Text(
                 when (intensity) {
                     RockingIntensity.LOW -> "Gentle"
@@ -1155,7 +1165,7 @@ private fun IntensityWave(intensity: RockingIntensity, selected: Boolean, modifi
 @Composable
 private fun DurationStepButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.width(72.dp).height(64.dp).clip(MaterialTheme.shapes.medium)
+        modifier = Modifier.width(64.dp).height(56.dp).clip(MaterialTheme.shapes.medium)
             .clickable(enabled = enabled, onClick = onClick),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
         shape = MaterialTheme.shapes.medium,
@@ -1163,7 +1173,7 @@ private fun DurationStepButton(label: String, enabled: Boolean, onClick: () -> U
         Box(contentAlignment = Alignment.Center) {
             Text(
                 label,
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.35f),
             )
         }
