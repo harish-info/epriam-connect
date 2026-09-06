@@ -3,6 +3,7 @@ package dev.epriam.connect.domain
 import dev.epriam.connect.protocol.PriamProtocol
 import dev.epriam.connect.protocol.RockingIntensity
 import dev.epriam.connect.protocol.RockingNotification
+import dev.epriam.connect.protocol.RockingProtocolError
 import dev.epriam.connect.protocol.RockingRequest
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
@@ -41,13 +42,39 @@ class RockingUpdateControllerTest {
         controller.schedule(request)
         advanceTimeBy(250)
         runCurrent()
-        controller.confirm(
+        controller.observe(
             RockingNotification(
                 intensity = request.intensity,
                 remainingSeconds = request.durationSeconds,
                 configuredSeconds = request.durationSeconds,
                 linkLossFlagSet = request.linkLossFlagSet,
                 error = null,
+                raw = byteArrayOf(),
+            ),
+        )
+        advanceTimeBy(3_000)
+        runCurrent()
+
+        assertNull(controller.pendingRequest)
+        assertEquals(emptyList<String>(), errors)
+    }
+
+    @Test
+    fun `rejected adjustment does not become a confirmation timeout`() = runTest {
+        val errors = mutableListOf<String>()
+        val request = RockingRequest(RockingIntensity.HIGH, 3_600)
+        val controller = controller(onError = errors::add)
+
+        controller.schedule(request)
+        advanceTimeBy(250)
+        runCurrent()
+        controller.observe(
+            RockingNotification(
+                intensity = null,
+                remainingSeconds = 0,
+                configuredSeconds = 0,
+                linkLossFlagSet = false,
+                error = RockingProtocolError.BrakeNotEngaged,
                 raw = byteArrayOf(),
             ),
         )

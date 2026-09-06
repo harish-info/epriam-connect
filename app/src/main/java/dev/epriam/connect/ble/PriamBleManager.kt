@@ -113,10 +113,11 @@ class PriamBleManager(
     }
 
     suspend fun writeRocking(bytes: ByteArray) {
+        val characteristic = requireNotNull(rockingCharacteristic) { "Rocking characteristic unavailable" }
         writeCharacteristic(
-            rockingCharacteristic,
+            characteristic,
             bytes,
-            rockingCharacteristic.writeType(),
+            characteristic.writeType(),
         ).suspend()
     }
 

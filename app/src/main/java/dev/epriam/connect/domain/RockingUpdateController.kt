@@ -35,8 +35,12 @@ internal class RockingUpdateController(
         }
     }
 
-    fun confirm(notification: RockingNotification) {
+    fun observe(notification: RockingNotification) {
         val pending = pendingRequest ?: return
+        if (notification.error != null) {
+            cancel()
+            return
+        }
         if (
             notification.intensity == pending.intensity &&
             notification.configuredSeconds == pending.durationSeconds

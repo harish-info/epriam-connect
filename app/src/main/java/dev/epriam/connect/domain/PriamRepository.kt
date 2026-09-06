@@ -292,7 +292,9 @@ class PriamRepository(context: Context) : PriamBleListener {
             val packet = PriamProtocol.encodeRocking(
                 RockingRequest(current.selectedIntensity, durationSeconds),
             )
-            runCatching { manager?.writeRocking(packet) }
+            runCatching {
+                requireNotNull(manager) { "Bluetooth connection unavailable" }.writeRocking(packet)
+            }
                 .onSuccess {
                     addDiagnostic("Rocking write ${PriamProtocol.toHex(packet)}")
                     delay(3_000)
@@ -329,7 +331,9 @@ class PriamRepository(context: Context) : PriamBleListener {
         _state.update { it.copy(rockingState = RockingState.Stopping) }
         scope.launch {
             val packet = PriamProtocol.encodeStopCandidate()
-            runCatching { manager?.writeRocking(packet) }
+            runCatching {
+                requireNotNull(manager) { "Bluetooth connection unavailable" }.writeRocking(packet)
+            }
                 .onSuccess {
                     addDiagnostic("Stop write ${PriamProtocol.toHex(packet)}")
                     delay(2_000)
@@ -421,7 +425,7 @@ class PriamRepository(context: Context) : PriamBleListener {
             )
             else -> RockingState.Off
         }
-        rockingUpdates.confirm(notification)
+        rockingUpdates.observe(notification)
         _state.update { it.copy(rockingState = rockingState) }
         addDiagnostic("Rocking notify ${PriamProtocol.toHex(bytes)}")
     }
