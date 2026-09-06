@@ -528,7 +528,7 @@ private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSetti
     BrandHeader(state, onSettings, actions.exitDemo)
     Spacer(Modifier.height(6.dp))
     RockingHero(state)
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(16.dp))
     if (state.rockingState !is RockingState.Unconfirmed) {
         RockingSetup(state, actions)
     } else {
