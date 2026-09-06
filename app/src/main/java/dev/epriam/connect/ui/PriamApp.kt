@@ -35,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -424,23 +425,32 @@ private fun ConnectionScreen(state: PriamUiState, actions: PriamActions, onSetti
         }
         Spacer(Modifier.height(20.dp))
     }
-    Button(
-        onClick = actions.scan,
-        enabled = state.connectionPhase !in setOf(ConnectionPhase.SCANNING, ConnectionPhase.CONNECTING),
-        modifier = Modifier.fillMaxWidth().height(58.dp),
-        shape = MaterialTheme.shapes.medium,
-    ) {
-        Text(if (state.connectionPhase == ConnectionPhase.SCANNING) "Scanning nearby…" else "Scan for e-Priam")
+    if (state.candidates.isNotEmpty()) {
+        Text("Available strollers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(10.dp))
     }
-    state.candidates.forEach { candidate ->
-        Spacer(Modifier.height(12.dp))
+    state.candidates.forEachIndexed { index, candidate ->
+        val connectionInProgress = state.connectionPhase in setOf(
+            ConnectionPhase.CONNECTING,
+            ConnectionPhase.DISCOVERING,
+        )
+        val selectedForConnection = connectionInProgress && state.connectedDeviceName == candidate.name
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.medium)
-                .clickable { actions.connect(candidate) },
-            color = MaterialTheme.colorScheme.surface,
+                .clickable(enabled = !connectionInProgress) { actions.connect(candidate) },
+            color = if (selectedForConnection) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
             shape = MaterialTheme.shapes.medium,
+            border = BorderStroke(
+                1.dp,
+                if (selectedForConnection) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outlineVariant,
+            ),
         ) {
             Row(
                 modifier = Modifier.padding(18.dp),
@@ -450,11 +460,48 @@ private fun ConnectionScreen(state: PriamUiState, actions: PriamActions, onSetti
                 Spacer(Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(candidate.name, style = MaterialTheme.typography.titleLarge)
-                    Text(signalLabel(candidate.rssi), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (selectedForConnection) state.statusMessage else signalLabel(candidate.rssi),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Text("CONNECT", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                if (selectedForConnection) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(26.dp).semantics {
+                            contentDescription = "Connecting to stroller"
+                        },
+                        strokeWidth = 2.5.dp,
+                    )
+                } else {
+                    Text("CONNECT", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
+        if (index < state.candidates.lastIndex) Spacer(Modifier.height(10.dp))
+    }
+    if (state.candidates.isNotEmpty()) Spacer(Modifier.height(16.dp))
+    val scanInProgress = state.connectionPhase == ConnectionPhase.SCANNING
+    Button(
+        onClick = actions.scan,
+        enabled = state.connectionPhase !in setOf(
+            ConnectionPhase.SCANNING,
+            ConnectionPhase.CONNECTING,
+            ConnectionPhase.DISCOVERING,
+        ),
+        modifier = Modifier.fillMaxWidth().height(58.dp),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        if (scanInProgress) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp).semantics {
+                    contentDescription = "Scanning for stroller"
+                },
+                color = MaterialTheme.colorScheme.onPrimary,
+                strokeWidth = 2.dp,
+            )
+            Spacer(Modifier.width(10.dp))
+        }
+        Text(if (scanInProgress) "Scanning nearby…" else "Scan for e-Priam")
     }
     if (BuildConfig.DEBUG) {
         TextButton(

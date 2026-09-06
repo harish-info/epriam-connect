@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import dev.epriam.connect.domain.ConnectionPhase
+import dev.epriam.connect.domain.DeviceCandidate
 import dev.epriam.connect.domain.DriveState
 import dev.epriam.connect.domain.PriamUiState
 import dev.epriam.connect.protocol.DriveMode
@@ -47,6 +48,28 @@ class PriamAppTest {
             "In the official Cybex app, disconnect the stroller — or close the app completely",
         ).assertIsDisplayed()
         composeRule.onNodeWithText("Scan for e-Priam").assertIsDisplayed()
+    }
+
+    @Test
+    fun selectedStrollerShowsConnectionProgress() {
+        val candidate = DeviceCandidate("id", "e-Priam", -55, "Nearby device")
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    PriamUiState(
+                        safetyAccepted = true,
+                        connectionPhase = ConnectionPhase.CONNECTING,
+                        statusMessage = "Connecting to e-Priam…",
+                        candidates = listOf(candidate),
+                        connectedDeviceName = candidate.name,
+                    ),
+                    PriamActions(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Available strollers").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Connecting to stroller").assertIsDisplayed()
     }
 
     @Test
