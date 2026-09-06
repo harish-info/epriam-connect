@@ -856,9 +856,9 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
             }
         }
     }
-    Spacer(Modifier.height(10.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(15, 30, 60, 120, 180).forEach { minutes ->
+    Spacer(Modifier.height(16.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        listOf(30, 60, 90, 120, 180).forEach { minutes ->
             Surface(
                 modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.small)
                     .clickable(enabled = controlsEnabled) { actions.setDuration(minutes) },
@@ -873,11 +873,12 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
             ) {
                 Text(
                     minutes.toString(),
-                    modifier = Modifier.padding(vertical = 11.dp),
+                    modifier = Modifier.padding(vertical = 15.dp),
                     textAlign = TextAlign.Center,
                     color = if (state.selectedDurationMinutes == minutes) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }
