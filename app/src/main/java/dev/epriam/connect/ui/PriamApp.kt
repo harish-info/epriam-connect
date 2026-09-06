@@ -79,7 +79,7 @@ fun PriamApp(
     )
 }
 
-private data class PriamActions(
+internal data class PriamActions(
     val acceptSafety: () -> Unit = {},
     val scan: () -> Unit = {},
     val connect: (DeviceCandidate) -> Unit = {},
@@ -95,7 +95,7 @@ private data class PriamActions(
 )
 
 @Composable
-private fun PriamAppContent(state: PriamUiState, actions: PriamActions) {
+internal fun PriamAppContent(state: PriamUiState, actions: PriamActions) {
     Scaffold { contentPadding ->
         if (!state.safetyAccepted) {
             SafetyScreen(
