@@ -528,7 +528,7 @@ private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSetti
     BrandHeader(state, onSettings, actions.exitDemo)
     Spacer(Modifier.height(6.dp))
     RockingHero(state)
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(24.dp))
     if (state.rockingState !is RockingState.Unconfirmed) {
         RockingSetup(state, actions)
     } else {
@@ -538,7 +538,7 @@ private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSetti
             }
         }
     }
-    Spacer(Modifier.height(18.dp))
+    Spacer(Modifier.height(32.dp))
     DriveModeLauncher(state = state, onClick = { showDriveModes = true })
     Spacer(Modifier.height(16.dp))
     if (showDriveModes) {
