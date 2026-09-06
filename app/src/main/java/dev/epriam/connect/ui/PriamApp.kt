@@ -516,9 +516,9 @@ private fun ConnectionScreen(state: PriamUiState, actions: PriamActions, onSetti
 private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSettings: () -> Unit) {
     var showDriveModes by remember { mutableStateOf(false) }
     BrandHeader(state, onSettings, actions.exitDemo)
-    Spacer(Modifier.height(2.dp))
+    Spacer(Modifier.height(6.dp))
     RockingHero(state)
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
     if (state.rockingState !is RockingState.Unconfirmed) {
         RockingSetup(state, actions)
     } else {
@@ -528,7 +528,7 @@ private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSetti
             }
         }
     }
-    Spacer(Modifier.height(14.dp))
+    Spacer(Modifier.height(18.dp))
     DriveModeLauncher(state = state, onClick = { showDriveModes = true })
     Spacer(Modifier.height(16.dp))
     if (showDriveModes) {
@@ -1001,13 +1001,13 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
             )
         }
     }
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Duration", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         Text("${state.selectedDurationMinutes} min", style = MaterialTheme.typography.titleMedium)
     }
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(8.dp))
     Surface(
         color = Color.Transparent,
         shape = MaterialTheme.shapes.medium,
@@ -1027,7 +1027,7 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
             }
         }
     }
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(12.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         listOf(30, 60, 90, 120, 180).forEach { minutes ->
             Surface(
@@ -1075,7 +1075,7 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
             modifier = Modifier.padding(top = 12.dp),
         )
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp))
     Button(
         onClick = if (active) actions.stopRocking else actions.startRocking,
         enabled = !busy,
@@ -1119,11 +1119,11 @@ private fun IntensityTile(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             IntensityWave(intensity, selected, Modifier.fillMaxWidth().height(17.dp))
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(4.dp))
             Text(intensity.displayName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
             Text(
                 when (intensity) {
