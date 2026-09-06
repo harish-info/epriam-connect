@@ -102,6 +102,7 @@ fun PriamApp(
             connect = repository::connect,
             disconnect = repository::disconnect,
             enterDemo = repository::enterDemo,
+            exitDemo = repository::exitDemo,
             setDriveMode = repository::setDriveMode,
             setIntensity = repository::setIntensity,
             setDuration = repository::setDuration,
@@ -119,6 +120,7 @@ internal data class PriamActions(
     val connect: (DeviceCandidate) -> Unit = {},
     val disconnect: () -> Unit = {},
     val enterDemo: () -> Unit = {},
+    val exitDemo: () -> Unit = {},
     val setDriveMode: (DriveMode) -> Unit = {},
     val setIntensity: (RockingIntensity) -> Unit = {},
     val setDuration: (Int) -> Unit = {},
@@ -466,7 +468,7 @@ private fun ConnectionScreen(state: PriamUiState, actions: PriamActions, onSetti
 @Composable
 private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSettings: () -> Unit) {
     var showDriveModes by remember { mutableStateOf(false) }
-    BrandHeader(state, onSettings)
+    BrandHeader(state, onSettings, actions.exitDemo)
     Spacer(Modifier.height(6.dp))
     RockingHero(state)
     Spacer(Modifier.height(12.dp))
@@ -498,6 +500,7 @@ private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSetti
 private fun BrandHeader(
     state: PriamUiState,
     onSettings: () -> Unit,
+    onExitDemo: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -518,11 +521,15 @@ private fun BrandHeader(
             }
         }
         Spacer(Modifier.weight(1f))
-        state.batteryPercent?.let { battery ->
-            BatteryGlyph(Modifier.size(25.dp), MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(6.dp))
-            Text("$battery%", style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.width(14.dp))
+        if (state.isDemo) {
+            TextButton(onClick = onExitDemo) { Text("Exit preview") }
+        } else {
+            state.batteryPercent?.let { battery ->
+                BatteryGlyph(Modifier.size(25.dp), MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(6.dp))
+                Text("$battery%", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.width(14.dp))
+            }
         }
         Box(
             modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onSettings)

@@ -179,6 +179,12 @@ class PriamRepository(context: Context) : PriamBleListener {
         addDiagnostic("Demo mode started; no Bluetooth writes will be sent")
     }
 
+    fun exitDemo() {
+        if (!_state.value.isDemo) return
+        demoCountdown?.cancel()
+        leaveDemo()
+    }
+
     fun setIntensity(intensity: RockingIntensity) {
         preferences.edit().putInt(KEY_INTENSITY, intensity.wireValue).apply()
         _state.update { it.copy(selectedIntensity = intensity) }

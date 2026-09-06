@@ -99,6 +99,24 @@ class PriamAppTest {
     }
 
     @Test
+    fun demoModeCanReturnToStrollerSelection() {
+        composeRule.setContent {
+            var state by remember { mutableStateOf(demoState()) }
+            EPriamConnectTheme {
+                PriamAppContent(
+                    state,
+                    PriamActions(
+                        exitDemo = { state = PriamUiState(safetyAccepted = true) },
+                    ),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Exit preview").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Scan for e-Priam").assertIsDisplayed()
+    }
+
+    @Test
     fun settingsKeepsDeveloperDetailsAwayFromMainControls() {
         composeRule.setContent {
             EPriamConnectTheme { PriamAppContent(demoState(), PriamActions()) }
