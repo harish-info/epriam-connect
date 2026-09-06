@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -132,6 +133,7 @@ internal fun PriamAppContent(state: PriamUiState, actions: PriamActions) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { contentPadding ->
         if (!state.safetyAccepted) {
             DisclaimerScreen(
+                themeMode = state.themeMode,
                 onAccept = actions.acceptSafety,
                 modifier = Modifier.padding(contentPadding),
             )
@@ -158,63 +160,111 @@ internal fun PriamAppContent(state: PriamUiState, actions: PriamActions) {
 }
 
 @Composable
-private fun DisclaimerScreen(onAccept: () -> Unit, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 30.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column {
-            BrandMark()
-            Spacer(Modifier.height(52.dp))
-            Text("You are in control.", style = MaterialTheme.typography.headlineLarge)
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "ePriam Connect sends commands directly to your stroller. It is independent software and is not affiliated with Cybex.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(28.dp))
-            DisclaimerPoint("Boost and sessions over 30 minutes are outside the official app’s controls.")
-            DisclaimerPoint("Use the parking brake, lock the front wheels and stay beside the stroller while rocking.")
-            DisclaimerPoint("You accept responsibility for injury, damage, data loss or unexpected stroller behaviour.")
-            Spacer(Modifier.height(24.dp))
-            Surface(
-                color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Text(
-                    "The developer provides this app as-is and is not responsible for damage to the stroller or harm caused by its use.",
-                    modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.tertiary,
-                    style = MaterialTheme.typography.bodyLarge,
+private fun DisclaimerScreen(themeMode: ThemeMode, onAccept: () -> Unit, modifier: Modifier = Modifier) {
+    var responsibilityAccepted by remember { mutableStateOf(false) }
+    val darkTheme = when (themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+    val welcomeAccent = MaterialTheme.colorScheme.primary
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, top = 8.dp, end = 24.dp, bottom = 184.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(modifier = Modifier.fillMaxWidth().height(175.dp), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.size(160.dp)) {
+                    drawCircle(welcomeAccent.copy(alpha = 0.06f), radius = size.minDimension * 0.48f)
+                    drawCircle(
+                        welcomeAccent.copy(alpha = 0.28f),
+                        radius = size.minDimension * 0.46f,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()),
+                    )
+                }
+                Image(
+                    painter = painterResource(if (darkTheme) R.drawable.stroller_hero_dark else R.drawable.stroller_hero_light),
+                    contentDescription = null,
+                    modifier = Modifier.size(width = 180.dp, height = 145.dp),
+                    contentScale = ContentScale.Fit,
+                    colorFilter = if (darkTheme) {
+                        ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                    } else {
+                        null
+                    },
                 )
             }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "e-Priam Companion",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "Direct Bluetooth controls for rocking and drive assistance.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Spacer(Modifier.height(18.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = MaterialTheme.shapes.medium,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Text(
+                        "This independent app controls stroller hardware. Extended rocking and Boost go beyond official controls. Apply the brake, stay beside the stroller, and accept responsibility for injury or damage.",
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(32.dp))
-        Button(
-            onClick = onAccept,
-            modifier = Modifier.fillMaxWidth().height(58.dp),
-            shape = MaterialTheme.shapes.medium,
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
         ) {
-            Text("Accept responsibility")
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = MaterialTheme.shapes.medium,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { responsibilityAccepted = !responsibilityAccepted }
+                        .semantics { contentDescription = "Accept responsibility" }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = responsibilityAccepted, onCheckedChange = { responsibilityAccepted = it })
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "I understand and take responsibility",
+                        modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = onAccept,
+                enabled = responsibilityAccepted,
+                modifier = Modifier.fillMaxWidth().height(58.dp),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Text("Get started")
+            }
         }
-    }
-}
-
-@Composable
-private fun DisclaimerPoint(text: String) {
-    Row(modifier = Modifier.padding(vertical = 9.dp)) {
-        Box(
-            Modifier
-                .padding(top = 8.dp)
-                .size(7.dp)
-                .background(MaterialTheme.colorScheme.primary, CircleShape),
-        )
-        Spacer(Modifier.width(14.dp))
-        Text(text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -594,7 +644,7 @@ private fun RockingHero(state: PriamUiState) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(modifier = Modifier.fillMaxWidth().height(206.dp), contentAlignment = Alignment.Center) {
-            RockingRings(active = active || busy, modifier = Modifier.fillMaxWidth().height(145.dp).align(Alignment.BottomCenter))
+            RockingRings(active = active || busy, modifier = Modifier.fillMaxWidth().height(88.dp).align(Alignment.BottomCenter))
             Image(
                 painter = painterResource(heroImage),
                 contentDescription = null,
@@ -616,12 +666,6 @@ private fun RockingHero(state: PriamUiState) {
         if (active) {
             RollingTimer(activeState.remainingSeconds)
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "A calmer ride for happier moments.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
         if (busy) {
             Spacer(Modifier.height(12.dp))
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), strokeCap = StrokeCap.Square)
@@ -674,12 +718,14 @@ private fun RockingRings(active: Boolean, modifier: Modifier = Modifier) {
     )
     val color = MaterialTheme.colorScheme.primary
     Canvas(modifier) {
+        val groundY = size.height * 0.72f
         repeat(5) { index ->
-            val scale = 0.36f + index * 0.13f
+            val widthScale = (0.34f + index * 0.13f) * pulse
+            val ringHeight = size.height * (0.08f + index * 0.035f)
             drawOval(
                 color = color.copy(alpha = if (active) 0.52f else 0.10f),
-                topLeft = Offset(size.width * (1f - scale * pulse) / 2, size.height * (1f - scale) * 0.82f),
-                size = androidx.compose.ui.geometry.Size(size.width * scale * pulse, size.height * scale * 0.42f),
+                topLeft = Offset(size.width * (1f - widthScale) / 2, groundY - ringHeight / 2),
+                size = androidx.compose.ui.geometry.Size(size.width * widthScale, ringHeight),
                 style = androidx.compose.ui.graphics.drawscope.Stroke(1.2.dp.toPx()),
             )
         }

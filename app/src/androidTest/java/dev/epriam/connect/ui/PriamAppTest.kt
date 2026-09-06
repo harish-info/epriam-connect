@@ -5,7 +5,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -29,8 +31,10 @@ class PriamAppTest {
             EPriamConnectTheme { PriamAppContent(PriamUiState(), PriamActions()) }
         }
 
-        composeRule.onNodeWithText("You are in control.").assertIsDisplayed()
-        composeRule.onNodeWithText("Accept responsibility").assertIsDisplayed()
+        composeRule.onNodeWithText("e-Priam Companion").assertIsDisplayed()
+        composeRule.onNodeWithText("Get started").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Accept responsibility").performClick()
+        composeRule.onNodeWithText("Get started").assertIsEnabled()
     }
 
     @Test
