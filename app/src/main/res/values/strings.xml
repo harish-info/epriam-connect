@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">ePriam Connect</string>
+    <string name="rocking_channel_name">Active rocking session</string>
+    <string name="rocking_channel_description">Keeps the stroller connection visible while rocking is active</string>
+    <string name="rocking_notification_title">ePriam rocking</string>
+    <string name="stop">Stop</string>
+</resources>
