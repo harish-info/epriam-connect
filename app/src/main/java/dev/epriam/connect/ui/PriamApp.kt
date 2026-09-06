@@ -737,6 +737,7 @@ private fun RockingHero(state: PriamUiState) {
                 },
             )
         }
+        if (!active && !busy) Spacer(Modifier.height(8.dp))
         Text(
             if (active) "Rocking in progress" else if (busy) "Preparing rocking" else "Ready to rock",
             style = if (active || busy) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineMedium,
