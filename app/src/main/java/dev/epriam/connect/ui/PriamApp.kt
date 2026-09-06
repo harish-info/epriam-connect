@@ -1131,18 +1131,22 @@ private fun IntensityTile(
 @Composable
 private fun IntensityWave(intensity: RockingIntensity, selected: Boolean, modifier: Modifier = Modifier) {
     val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    val amplitude = when (intensity) {
-        RockingIntensity.LOW -> 0.18f
-        RockingIntensity.MEDIUM -> 0.30f
-        RockingIntensity.HIGH -> 0.43f
+    val (amplitude, cycles) = when (intensity) {
+        RockingIntensity.LOW -> 0.16f to 1.25f
+        RockingIntensity.MEDIUM -> 0.30f to 3f
+        RockingIntensity.HIGH -> 0.40f to 5.5f
     }
     Canvas(modifier) {
-        val pointCount = 32
+        val pointCount = 72
         repeat(pointCount - 1) { index ->
             val x1 = size.width * index / (pointCount - 1)
             val x2 = size.width * (index + 1) / (pointCount - 1)
-            val y1 = size.height * (0.5f + amplitude * sin(index * PI * 3 / (pointCount - 1)).toFloat())
-            val y2 = size.height * (0.5f + amplitude * sin((index + 1) * PI * 3 / (pointCount - 1)).toFloat())
+            val y1 = size.height * (
+                0.5f + amplitude * sin(index * PI * 2 * cycles / (pointCount - 1)).toFloat()
+            )
+            val y2 = size.height * (
+                0.5f + amplitude * sin((index + 1) * PI * 2 * cycles / (pointCount - 1)).toFloat()
+            )
             drawLine(color, Offset(x1, y1), Offset(x2, y2), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
         }
     }
