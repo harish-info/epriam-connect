@@ -64,7 +64,7 @@ class RockingSessionService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_stroller)
             .setContentTitle(getString(R.string.rocking_notification_title))
             .setContentText(content)
             .setContentIntent(openIntent)

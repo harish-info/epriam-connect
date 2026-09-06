@@ -362,21 +362,12 @@ private fun BrandMark() {
 
 @Composable
 private fun StrollerGlyph(modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurface) {
-    Canvas(modifier) {
-        val stroke = size.minDimension * 0.09f
-        drawLine(color, start = androidx.compose.ui.geometry.Offset(size.width * 0.18f, size.height * 0.18f),
-            end = androidx.compose.ui.geometry.Offset(size.width * 0.42f, size.height * 0.32f), strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(color, start = androidx.compose.ui.geometry.Offset(size.width * 0.40f, size.height * 0.31f),
-            end = androidx.compose.ui.geometry.Offset(size.width * 0.72f, size.height * 0.72f), strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(color, start = androidx.compose.ui.geometry.Offset(size.width * 0.38f, size.height * 0.35f),
-            end = androidx.compose.ui.geometry.Offset(size.width * 0.80f, size.height * 0.35f), strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(color, start = androidx.compose.ui.geometry.Offset(size.width * 0.80f, size.height * 0.35f),
-            end = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.67f), strokeWidth = stroke, cap = StrokeCap.Round)
-        drawCircle(color, radius = size.minDimension * 0.12f,
-            center = androidx.compose.ui.geometry.Offset(size.width * 0.36f, size.height * 0.79f))
-        drawCircle(color, radius = size.minDimension * 0.12f,
-            center = androidx.compose.ui.geometry.Offset(size.width * 0.76f, size.height * 0.79f))
-    }
+    Image(
+        painter = painterResource(R.drawable.ic_stroller),
+        contentDescription = null,
+        modifier = modifier,
+        colorFilter = ColorFilter.tint(color),
+    )
 }
 
 @Composable
