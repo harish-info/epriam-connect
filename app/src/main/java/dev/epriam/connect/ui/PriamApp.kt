@@ -347,27 +347,25 @@ private fun SettingsScreen(
 @Composable
 private fun BrandMark() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .background(MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small),
-            contentAlignment = Alignment.Center,
-        ) {
-            StrollerGlyph(Modifier.size(23.dp), MaterialTheme.colorScheme.onPrimary)
-        }
+        StrollerAppBadge(Modifier.size(34.dp))
         Spacer(Modifier.width(10.dp))
         Text("PRIAM / CONNECT", style = MaterialTheme.typography.labelLarge)
     }
 }
 
 @Composable
-private fun StrollerGlyph(modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurface) {
-    Image(
-        painter = painterResource(R.drawable.ic_stroller),
-        contentDescription = null,
-        modifier = modifier,
-        colorFilter = ColorFilter.tint(color),
-    )
+private fun StrollerAppBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(Color(0xFFDDF6EC), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.stroller_hero_light),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 6.dp),
+            contentScale = ContentScale.Fit,
+        )
+    }
 }
 
 @Composable
@@ -473,7 +471,7 @@ private fun BrandHeader(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StrollerGlyph(Modifier.size(46.dp), MaterialTheme.colorScheme.onSurface)
+        StrollerAppBadge(Modifier.size(46.dp))
         Spacer(Modifier.width(12.dp))
         Column {
             Text("e-Priam", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -597,12 +595,7 @@ private fun StrollerRadar(scanning: Boolean, modifier: Modifier = Modifier) {
             drawCircle(color.copy(alpha = (1f - pulse) * 0.22f), radius = size.minDimension * pulse / 2)
             drawCircle(color.copy(alpha = 0.12f), radius = size.minDimension * 0.34f)
         }
-        Box(
-            modifier = Modifier.size(52.dp).background(color, MaterialTheme.shapes.medium),
-            contentAlignment = Alignment.Center,
-        ) {
-            StrollerGlyph(Modifier.size(34.dp), MaterialTheme.colorScheme.onPrimary)
-        }
+        StrollerAppBadge(Modifier.size(58.dp))
     }
 }
 
