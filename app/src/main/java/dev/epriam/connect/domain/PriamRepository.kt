@@ -92,16 +92,22 @@ class PriamRepository(context: Context) : PriamBleListener {
                 delay(SCAN_DURATION_MILLIS)
                 scanner.stop()
                 autoConnectJob?.cancel()
-                _state.update { current ->
-                    if (current.connectionPhase != ConnectionPhase.SCANNING) current
-                    else current.copy(
-                        connectionPhase = ConnectionPhase.IDLE,
-                        statusMessage = if (current.candidates.isEmpty()) {
-                            "No Cybex stroller found. Move closer and try again."
-                        } else {
-                            "Select your stroller"
-                        },
-                    )
+                val current = _state.value
+                val onlyCandidate = current.candidates.singleOrNull()
+                if (current.connectionPhase == ConnectionPhase.SCANNING && onlyCandidate != null) {
+                    addDiagnostic("One stroller found at scan completion; connecting automatically")
+                    connect(onlyCandidate)
+                } else {
+                    _state.update { latest ->
+                        if (latest.connectionPhase != ConnectionPhase.SCANNING) latest else latest.copy(
+                            connectionPhase = ConnectionPhase.IDLE,
+                            statusMessage = if (latest.candidates.isEmpty()) {
+                                "No Cybex stroller found. Move closer and try again."
+                            } else {
+                                "Select your stroller"
+                            },
+                        )
+                    }
                 }
             }
         } catch (error: SecurityException) {
