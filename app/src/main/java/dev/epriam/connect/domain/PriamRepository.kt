@@ -36,9 +36,9 @@ class PriamRepository(context: Context) : PriamBleListener {
         PriamUiState(
             safetyAccepted = preferences.getInt(KEY_DISCLAIMER_VERSION, 0) >= CURRENT_DISCLAIMER_VERSION,
             selectedIntensity = RockingIntensity.fromWire(
-                preferences.getInt(KEY_INTENSITY, RockingIntensity.LOW.wireValue),
+                preferences.getInt(KEY_INTENSITY, RockingIntensity.MEDIUM.wireValue),
             ) ?: RockingIntensity.LOW,
-            selectedDurationMinutes = preferences.getInt(KEY_DURATION_MINUTES, 15).coerceIn(5, 180),
+            selectedDurationMinutes = preferences.getInt(KEY_DURATION_MINUTES, 30).coerceIn(5, 180),
             themeMode = preferences.getString(KEY_THEME_MODE, null)
                 ?.let { value -> runCatching { ThemeMode.valueOf(value) }.getOrNull() }
                 ?: ThemeMode.SYSTEM,

@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -50,10 +51,10 @@ class PriamAppTest {
             EPriamConnectTheme { PriamAppContent(demoState(), PriamActions()) }
         }
 
-        composeRule.onNodeWithText("Drive assistance").performScrollTo().performClick()
-        composeRule.onNodeWithText("BOOST").assertIsDisplayed()
-        composeRule.onNodeWithText("ECO").assertIsDisplayed()
-        composeRule.onNodeWithText("TOUR").assertIsDisplayed()
+        composeRule.onNodeWithText("Drive assistance").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Boost").assertIsDisplayed()
+        composeRule.onNodeWithText("Eco").assertIsDisplayed()
+        composeRule.onNodeWithText("Tour").assertIsDisplayed()
     }
 
     @Test
@@ -76,7 +77,7 @@ class PriamAppTest {
         composeRule.onNodeWithText("Beyond Cybex’s 30-minute limit · stay nearby")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText("START · 60 MIN · LOW").performScrollTo().performClick()
+        composeRule.onNodeWithText("Start Rocking").performScrollTo().performClick()
         composeRule.runOnIdle { assert(started) }
         composeRule.onNodeWithText("Start an extended session?").assertIsNotDisplayed()
     }
@@ -88,7 +89,7 @@ class PriamAppTest {
         }
 
         composeRule.onNodeWithText("PROTOCOL LOG", substring = true).assertIsNotDisplayed()
-        composeRule.onNodeWithText("SETTINGS").performClick()
+        composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNodeWithText("Appearance").assertIsDisplayed()
         composeRule.onNodeWithText("PROTOCOL LOG", substring = true).assertIsDisplayed()
     }

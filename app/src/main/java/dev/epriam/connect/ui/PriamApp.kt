@@ -3,14 +3,20 @@ package dev.epriam.connect.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +31,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,13 +57,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.epriam.connect.BuildConfig
+import dev.epriam.connect.R
 import dev.epriam.connect.domain.ConnectionPhase
 import dev.epriam.connect.domain.DeviceCandidate
 import dev.epriam.connect.domain.DriveState
@@ -267,6 +279,17 @@ private fun SettingsScreen(
                 }
             }
         }
+        if (state.isReady) {
+            Spacer(Modifier.height(30.dp))
+            OutlinedButton(
+                onClick = actions.disconnect,
+                enabled = !state.motionMayBeActive,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Text(if (state.motionMayBeActive) "Stop rocking before disconnecting" else "Disconnect stroller")
+            }
+        }
         Spacer(Modifier.height(30.dp))
     }
 }
@@ -372,20 +395,20 @@ private fun ConnectionScreen(state: PriamUiState, actions: PriamActions, onSetti
 @Composable
 private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSettings: () -> Unit) {
     var showDriveModes by remember { mutableStateOf(false) }
-    BrandHeader(state, actions.disconnect, onSettings)
-    Spacer(Modifier.height(26.dp))
-    RockingHero(state, actions)
-    Spacer(Modifier.height(30.dp))
-    if (state.rockingState is RockingState.Off || state.rockingState is RockingState.Rejected) {
+    BrandHeader(state, onSettings)
+    Spacer(Modifier.height(6.dp))
+    RockingHero(state)
+    Spacer(Modifier.height(12.dp))
+    if (state.rockingState !is RockingState.Unconfirmed) {
         RockingSetup(state, actions)
-    } else if (state.rockingState is RockingState.Unconfirmed) {
+    } else {
         WarningPanel(state.rockingState.message) {
             OutlinedButton(onClick = actions.stopRocking, shape = MaterialTheme.shapes.small) {
                 Text("Send stop again")
             }
         }
     }
-    HorizontalDivider(modifier = Modifier.padding(vertical = 28.dp), color = MaterialTheme.colorScheme.outlineVariant)
+    Spacer(Modifier.height(22.dp))
     DriveModeLauncher(state = state, onClick = { showDriveModes = true })
     Spacer(Modifier.height(24.dp))
     if (showDriveModes) {
@@ -403,37 +426,91 @@ private fun ControlDashboard(state: PriamUiState, actions: PriamActions, onSetti
 @Composable
 private fun BrandHeader(
     state: PriamUiState,
-    disconnect: (() -> Unit)? = null,
     onSettings: () -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        BrandMark()
-        Spacer(Modifier.weight(1f))
-        TextButton(onClick = onSettings) { Text("SETTINGS") }
-    }
-    Spacer(Modifier.height(6.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).background(statusColor(state), CircleShape))
-        Spacer(Modifier.width(9.dp))
-        Box(modifier = Modifier.weight(1f)) {
-            AnimatedContent(targetState = state.statusMessage, label = "connection status") { message ->
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StrollerGlyph(Modifier.size(46.dp), MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text("e-Priam", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(statusColor(state), CircleShape))
+                Spacer(Modifier.width(7.dp))
                 Text(
-                    message,
-                    color = if (state.connectionPhase == ConnectionPhase.ERROR) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (state.isReady) "Connected" else state.statusMessage,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
+        Spacer(Modifier.weight(1f))
         state.batteryPercent?.let { battery ->
-            Text("$battery%", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.width(8.dp))
+            BatteryGlyph(Modifier.size(25.dp), MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(6.dp))
+            Text("$battery%", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.width(14.dp))
         }
-        if (disconnect != null) {
-            TextButton(onClick = disconnect, enabled = !state.motionMayBeActive) {
-                Text(if (state.motionMayBeActive) "ACTIVE" else "Disconnect")
-            }
+        Box(
+            modifier = Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onSettings)
+                .semantics { contentDescription = "Settings" },
+            contentAlignment = Alignment.Center,
+        ) {
+            SettingsGlyph(Modifier.size(28.dp), MaterialTheme.colorScheme.onSurface)
         }
+    }
+}
+
+@Composable
+private fun SettingsGlyph(modifier: Modifier = Modifier, color: Color) {
+    Canvas(modifier) {
+        val stroke = 2.dp.toPx()
+        drawCircle(
+            color = color,
+            radius = size.minDimension * 0.27f,
+            center = center,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
+        )
+        drawCircle(color = color, radius = size.minDimension * 0.07f, center = center)
+        val directions = listOf(
+            Offset(0f, -1f), Offset(0.71f, -0.71f), Offset(1f, 0f), Offset(0.71f, 0.71f),
+            Offset(0f, 1f), Offset(-0.71f, 0.71f), Offset(-1f, 0f), Offset(-0.71f, -0.71f),
+        )
+        directions.forEach { direction ->
+            drawLine(
+                color = color,
+                start = center + direction * size.minDimension * 0.31f,
+                end = center + direction * size.minDimension * 0.45f,
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BatteryGlyph(modifier: Modifier = Modifier, color: Color) {
+    Canvas(modifier) {
+        val stroke = 1.5.dp.toPx()
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.05f, size.height * 0.25f),
+            size = androidx.compose.ui.geometry.Size(size.width * 0.78f, size.height * 0.5f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(stroke, stroke),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(stroke),
+        )
+        drawRect(
+            color = color,
+            topLeft = Offset(size.width * 0.86f, size.height * 0.39f),
+            size = androidx.compose.ui.geometry.Size(size.width * 0.09f, size.height * 0.22f),
+        )
+        drawRect(
+            color = color,
+            topLeft = Offset(size.width * 0.13f, size.height * 0.33f),
+            size = androidx.compose.ui.geometry.Size(size.width * 0.58f, size.height * 0.34f),
+        )
     }
 }
 
@@ -502,56 +579,84 @@ private fun statusColor(state: PriamUiState): Color = when (state.connectionPhas
 }
 
 @Composable
-private fun RockingHero(state: PriamUiState, actions: PriamActions) {
-    val active = state.rockingState is RockingState.Active
-    val surfaceColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-    Surface(
+private fun RockingHero(state: PriamUiState) {
+    val activeState = state.rockingState as? RockingState.Active
+    val active = activeState != null
+    val busy = state.rockingState is RockingState.Starting || state.rockingState is RockingState.Stopping
+    val darkTheme = when (state.themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+    val heroImage = if (darkTheme) R.drawable.stroller_hero_dark else R.drawable.stroller_hero_light
+    Column(
         modifier = Modifier.fillMaxWidth().animateContentSize(),
-        color = surfaceColor,
-        shape = MaterialTheme.shapes.large,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 24.dp)) {
-            if (active) RockingPulse(Modifier.align(Alignment.CenterEnd))
-            Column {
+        Box(modifier = Modifier.fillMaxWidth().height(206.dp), contentAlignment = Alignment.Center) {
+            RockingRings(active = active || busy, modifier = Modifier.fillMaxWidth().height(145.dp).align(Alignment.BottomCenter))
+            Image(
+                painter = painterResource(heroImage),
+                contentDescription = null,
+                modifier = Modifier.size(width = 235.dp, height = 185.dp),
+                contentScale = ContentScale.Fit,
+                colorFilter = if (darkTheme) {
+                    ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                } else {
+                    null
+                },
+            )
+        }
+        Text(
+            if (active) "Rocking in progress" else if (busy) "Preparing rocking" else "Ready to rock",
+            style = if (active || busy) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineLarge,
+            fontWeight = if (active || busy) FontWeight.Medium else FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+        if (active) {
+            RollingTimer(activeState.remainingSeconds)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "A calmer ride for happier moments.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        if (busy) {
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), strokeCap = StrokeCap.Square)
+        }
+    }
+}
+
+@Composable
+private fun RollingTimer(seconds: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        formatDuration(seconds).forEachIndexed { index, character ->
+            if (character == ':') {
                 Text(
-                    when (state.rockingState) {
-                        is RockingState.Active -> "ROCKING"
-                        is RockingState.Starting -> "STARTING"
-                        is RockingState.Stopping -> "STOPPING"
-                        else -> "READY"
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+                    character.toString(),
+                    style = MaterialTheme.typography.displayLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
                 )
-                Spacer(Modifier.height(8.dp))
-                val remaining = (state.rockingState as? RockingState.Active)?.remainingSeconds
-                AnimatedContent(targetState = remaining, label = "rocking timer") { seconds ->
+            } else {
+                AnimatedContent(
+                    targetState = character,
+                    transitionSpec = {
+                        slideInVertically(animationSpec = tween(340)) { height -> height } togetherWith
+                            slideOutVertically(animationSpec = tween(340)) { height -> -height }
+                    },
+                    label = "timer digit $index",
+                ) { digit ->
                     Text(
-                        seconds?.let(::formatDuration) ?: "Rock gently.",
-                        style = if (seconds == null) MaterialTheme.typography.headlineLarge else MaterialTheme.typography.displayLarge,
-                        color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                        digit.toString(),
+                        style = MaterialTheme.typography.displayLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
                     )
-                }
-                if (state.rockingState is RockingState.Active) {
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        "${state.rockingState.intensity.displayName} intensity · ${formatDuration(state.rockingState.configuredSeconds)} set",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    Button(
-                        onClick = actions.stopRocking,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
-                        ),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                    ) { Text("STOP ROCKING") }
-                }
-                if (state.rockingState is RockingState.Starting || state.rockingState is RockingState.Stopping) {
-                    Spacer(Modifier.height(20.dp))
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), strokeCap = StrokeCap.Square)
                 }
             }
         }
@@ -559,19 +664,25 @@ private fun RockingHero(state: PriamUiState, actions: PriamActions) {
 }
 
 @Composable
-private fun RockingPulse(modifier: Modifier = Modifier) {
+private fun RockingRings(active: Boolean, modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "rocking pulse")
     val pulse by transition.animateFloat(
-        initialValue = 0.62f,
+        initialValue = 0.78f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1800), repeatMode = RepeatMode.Restart),
+        animationSpec = infiniteRepeatable(tween(if (active) 1600 else 1), repeatMode = RepeatMode.Restart),
         label = "pulse radius",
     )
     val color = MaterialTheme.colorScheme.primary
-    Canvas(modifier.size(150.dp)) {
-        drawCircle(color.copy(alpha = (1f - pulse) * 0.22f), radius = size.minDimension * pulse / 2)
-        drawCircle(color.copy(alpha = 0.14f), radius = size.minDimension * 0.30f)
-        drawCircle(color.copy(alpha = 0.24f), radius = size.minDimension * 0.17f)
+    Canvas(modifier) {
+        repeat(5) { index ->
+            val scale = 0.36f + index * 0.13f
+            drawOval(
+                color = color.copy(alpha = if (active) 0.52f else 0.10f),
+                topLeft = Offset(size.width * (1f - scale * pulse) / 2, size.height * (1f - scale) * 0.82f),
+                size = androidx.compose.ui.geometry.Size(size.width * scale * pulse, size.height * scale * 0.42f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(1.2.dp.toPx()),
+            )
+        }
     }
 }
 
@@ -587,23 +698,23 @@ private fun DriveModeLauncher(state: PriamUiState, onClick: () -> Unit) {
     val selected = selectedDriveMode(state)
     Surface(
         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surface,
+        color = Color.Transparent,
         shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 17.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier.size(42.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("↗", color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.titleLarge)
-            }
+            Image(
+                painter = painterResource(R.drawable.ic_drive_assistance),
+                contentDescription = null,
+                modifier = Modifier.size(34.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+            )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Drive assistance", style = MaterialTheme.typography.titleLarge)
+                Text("Drive assistance", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                 Text(
                     selected?.let { "${it.displayName} mode" } ?: "Choose motor support",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -611,9 +722,9 @@ private fun DriveModeLauncher(state: PriamUiState, onClick: () -> Unit) {
                 )
             }
             Text(
-                if (state.driveState is DriveState.Applying) "APPLYING" else "CHANGE  ›",
+                if (state.driveState is DriveState.Applying) "APPLYING" else "›",
                 color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.headlineLarge,
             )
         }
     }
@@ -624,11 +735,12 @@ private fun DriveModeLauncher(state: PriamUiState, onClick: () -> Unit) {
 private fun DriveModeSheet(state: PriamUiState, onDismiss: () -> Unit, onMode: (DriveMode) -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 30.dp),
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Drive assistance", style = MaterialTheme.typography.headlineLarge)
-            Text("Choose how strongly the motor supports your push.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Drive assistance", style = MaterialTheme.typography.headlineMedium)
+            Text("Choose how much support you want.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             DriveMode.entries.forEach { mode ->
                 DriveModeCard(
@@ -644,67 +756,102 @@ private fun DriveModeSheet(state: PriamUiState, onDismiss: () -> Unit, onMode: (
 
 @Composable
 private fun DriveModeCard(mode: DriveMode, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val description = when (mode) {
-        DriveMode.ECO -> "Gentle support · maximum range"
-        DriveMode.TOUR -> "Balanced everyday support"
-        DriveMode.BOOST -> "Maximum support when you need it"
+    val (summary, detail) = when (mode) {
+        DriveMode.ECO -> "Maximum range" to "Gentle support for everyday strolls."
+        DriveMode.TOUR -> "Balanced" to "A smooth mix of support and range."
+        DriveMode.BOOST -> "Maximum support" to "Extra power for hills and heavier loads."
     }
     Surface(
         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
             .clickable(enabled = enabled, onClick = onClick),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent,
         shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
     ) {
-        Row(modifier = Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(
+                painter = painterResource(driveModeIcon(mode)),
+                contentDescription = null,
+                modifier = Modifier.size(34.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+            )
+            Spacer(Modifier.width(18.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(mode.displayName.uppercase(), style = MaterialTheme.typography.titleLarge)
+                Text(mode.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(3.dp))
-                Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(summary, color = MaterialTheme.colorScheme.onSurface)
+                Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            if (selected) {
-                Text("CURRENT", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            Box(
+                modifier = Modifier.size(24.dp).background(
+                    if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    CircleShape,
+                ).then(
+                    if (selected) Modifier else Modifier.background(MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier.size(if (selected) 8.dp else 20.dp).background(
+                        if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.surface,
+                        CircleShape,
+                    ),
+                )
             }
         }
     }
 }
 
+private fun driveModeIcon(mode: DriveMode): Int = when (mode) {
+    DriveMode.ECO -> R.drawable.ic_drive_eco
+    DriveMode.TOUR -> R.drawable.ic_drive_tour
+    DriveMode.BOOST -> R.drawable.ic_drive_boost
+}
+
 @Composable
 private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
-    SectionTitle("Rocking", "Set the motion and duration, then start when you are ready.")
-    Spacer(Modifier.height(22.dp))
-    ControlLabel("INTENSITY")
-    Spacer(Modifier.height(10.dp))
+    val active = state.rockingState is RockingState.Active
+    val busy = state.rockingState is RockingState.Starting || state.rockingState is RockingState.Stopping
+    val controlsEnabled = !active && !busy
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         RockingIntensity.entries.reversed().forEach { intensity ->
             IntensityTile(
                 intensity = intensity,
                 selected = state.selectedIntensity == intensity,
+                enabled = controlsEnabled,
                 onClick = { actions.setIntensity(intensity) },
                 modifier = Modifier.weight(1f),
             )
         }
     }
-    Spacer(Modifier.height(28.dp))
-    ControlLabel("DURATION")
+    Spacer(Modifier.height(18.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Duration", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.weight(1f))
+        Text("${state.selectedDurationMinutes} min", style = MaterialTheme.typography.titleLarge)
+    }
     Spacer(Modifier.height(10.dp))
-    Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.large) {
+    Surface(
+        color = Color.Transparent,
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            modifier = Modifier.fillMaxWidth().height(64.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            DurationStepButton("−", enabled = state.selectedDurationMinutes > 5) {
+            DurationStepButton("−", enabled = controlsEnabled && state.selectedDurationMinutes > 5) {
                 actions.setDuration((state.selectedDurationMinutes - 5).coerceAtLeast(5))
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("${state.selectedDurationMinutes}", style = MaterialTheme.typography.displayLarge)
-                Text(
-                    "MINUTES",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            DurationStepButton("+", enabled = state.selectedDurationMinutes < 180) {
+            Text("${state.selectedDurationMinutes}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            DurationStepButton("+", enabled = controlsEnabled && state.selectedDurationMinutes < 180) {
                 actions.setDuration((state.selectedDurationMinutes + 5).coerceAtMost(180))
             }
         }
@@ -714,16 +861,21 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
         listOf(15, 30, 60, 120, 180).forEach { minutes ->
             Surface(
                 modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.small)
-                    .clickable { actions.setDuration(minutes) },
-                color = if (state.selectedDurationMinutes == minutes) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surface,
+                    .clickable(enabled = controlsEnabled) { actions.setDuration(minutes) },
+                color = if (state.selectedDurationMinutes == minutes) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                else Color.Transparent,
                 shape = MaterialTheme.shapes.small,
+                border = BorderStroke(
+                    1.dp,
+                    if (state.selectedDurationMinutes == minutes) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.outlineVariant,
+                ),
             ) {
                 Text(
                     minutes.toString(),
                     modifier = Modifier.padding(vertical = 11.dp),
                     textAlign = TextAlign.Center,
-                    color = if (state.selectedDurationMinutes == minutes) MaterialTheme.colorScheme.onPrimaryContainer
+                    color = if (state.selectedDurationMinutes == minutes) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelLarge,
                 )
@@ -753,11 +905,27 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
     }
     Spacer(Modifier.height(22.dp))
     Button(
-        onClick = actions.startRocking,
+        onClick = if (active) actions.stopRocking else actions.startRocking,
+        enabled = !busy,
         modifier = Modifier.fillMaxWidth().height(62.dp),
         shape = MaterialTheme.shapes.medium,
+        colors = if (active) {
+            ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFE5252A),
+                contentColor = Color.White,
+            )
+        } else {
+            ButtonDefaults.buttonColors()
+        },
     ) {
-        Text("START · ${state.selectedDurationMinutes} MIN · ${state.selectedIntensity.displayName.uppercase()}")
+        Image(
+            painter = painterResource(if (active) R.drawable.ic_rocking_stop else R.drawable.ic_rocking_play),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            colorFilter = ColorFilter.tint(if (active) Color.White else MaterialTheme.colorScheme.onPrimary),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(if (active) "Stop Rocking" else if (busy) "Please wait…" else "Start Rocking")
     }
 }
 
@@ -765,21 +933,35 @@ private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
 private fun IntensityTile(
     intensity: RockingIntensity,
     selected: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onClick),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        modifier = modifier.clip(MaterialTheme.shapes.medium).clickable(enabled = enabled, onClick = onClick),
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent,
         shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            IntensityWave(intensity, selected, Modifier.fillMaxWidth().height(26.dp))
-            Spacer(Modifier.height(9.dp))
-            Text(intensity.displayName.uppercase(), style = MaterialTheme.typography.labelLarge)
+            IntensityWave(intensity, selected, Modifier.fillMaxWidth().height(20.dp))
+            Spacer(Modifier.height(5.dp))
+            Text(intensity.displayName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Text(
+                when (intensity) {
+                    RockingIntensity.LOW -> "Gentle"
+                    RockingIntensity.MEDIUM -> "Balanced"
+                    RockingIntensity.HIGH -> "Strong"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -807,16 +989,16 @@ private fun IntensityWave(intensity: RockingIntensity, selected: Boolean, modifi
 @Composable
 private fun DurationStepButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.size(58.dp).clip(MaterialTheme.shapes.medium)
+        modifier = Modifier.width(72.dp).height(64.dp).clip(MaterialTheme.shapes.medium)
             .clickable(enabled = enabled, onClick = onClick),
-        color = MaterialTheme.colorScheme.primaryContainer,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
         shape = MaterialTheme.shapes.medium,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 label,
                 style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = if (enabled) 1f else 0.35f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.35f),
             )
         }
     }
@@ -827,11 +1009,6 @@ private fun SectionTitle(title: String, subtitle: String) {
     Text(title, style = MaterialTheme.typography.titleLarge)
     Spacer(Modifier.height(3.dp))
     Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-}
-
-@Composable
-private fun ControlLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
