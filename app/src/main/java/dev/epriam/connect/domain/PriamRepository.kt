@@ -29,6 +29,7 @@ class PriamRepository(context: Context) : PriamBleListener {
     private val scanner = PriamScanner(applicationContext)
     private var manager: PriamBleManager? = null
     private var scanTimeout: Job? = null
+    private var autoConnectJob: Job? = null
     private var demoCountdown: Job? = null
     private val disconnectExpected = AtomicBoolean(false)
 
@@ -57,6 +58,7 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     @SuppressLint("MissingPermission")
     fun startScan() {
+        if (!_state.value.safetyAccepted) return
         leaveDemo()
         if (!scanner.isBluetoothEnabled) {
             _state.update {
@@ -65,6 +67,7 @@ class PriamRepository(context: Context) : PriamBleListener {
             return
         }
         scanTimeout?.cancel()
+        autoConnectJob?.cancel()
         _state.update {
             it.copy(
                 connectionPhase = ConnectionPhase.SCANNING,
@@ -75,17 +78,20 @@ class PriamRepository(context: Context) : PriamBleListener {
         try {
             scanner.start(
                 onCandidate = { candidate ->
+                    val isNewCandidate = _state.value.candidates.none { it.id == candidate.id }
                     _state.update { current ->
                         val candidates = (current.candidates.filterNot { it.id == candidate.id } + candidate)
                             .sortedByDescending(DeviceCandidate::rssi)
                         current.copy(candidates = candidates, statusMessage = "Stroller found")
                     }
+                    if (isNewCandidate) scheduleAutoConnect(candidate)
                 },
                 onError = ::fail,
             )
             scanTimeout = scope.launch {
                 delay(SCAN_DURATION_MILLIS)
                 scanner.stop()
+                autoConnectJob?.cancel()
                 _state.update { current ->
                     if (current.connectionPhase != ConnectionPhase.SCANNING) current
                     else current.copy(
@@ -107,6 +113,7 @@ class PriamRepository(context: Context) : PriamBleListener {
     fun connect(candidate: DeviceCandidate) {
         scanner.stop()
         scanTimeout?.cancel()
+        autoConnectJob?.cancel()
         val device = try {
             scanner.device(candidate.id)
         } catch (error: IllegalArgumentException) {
@@ -139,6 +146,7 @@ class PriamRepository(context: Context) : PriamBleListener {
         }
         scanner.stop()
         scanTimeout?.cancel()
+        autoConnectJob?.cancel()
         demoCountdown?.cancel()
         if (_state.value.isDemo) {
             leaveDemo()
@@ -162,6 +170,7 @@ class PriamRepository(context: Context) : PriamBleListener {
     fun enterDemo() {
         scanner.stop()
         scanTimeout?.cancel()
+        autoConnectJob?.cancel()
         manager = null
         _state.update {
             it.copy(
@@ -423,6 +432,22 @@ class PriamRepository(context: Context) : PriamBleListener {
         }
     }
 
+    private fun scheduleAutoConnect(firstCandidate: DeviceCandidate) {
+        autoConnectJob?.cancel()
+        autoConnectJob = scope.launch {
+            delay(AUTO_CONNECT_DELAY_MILLIS)
+            val current = _state.value
+            val onlyCandidate = current.candidates.singleOrNull()
+            if (
+                current.connectionPhase == ConnectionPhase.SCANNING &&
+                onlyCandidate?.id == firstCandidate.id
+            ) {
+                addDiagnostic("One stroller found; connecting automatically")
+                connect(onlyCandidate)
+            }
+        }
+    }
+
     private fun fail(message: String) {
         _state.update { it.copy(connectionPhase = ConnectionPhase.ERROR, statusMessage = message) }
         addDiagnostic(message)
@@ -455,6 +480,7 @@ class PriamRepository(context: Context) : PriamBleListener {
         private const val KEY_THEME_MODE = "theme_mode"
         private const val CURRENT_DISCLAIMER_VERSION = 2
         private const val SCAN_DURATION_MILLIS = 12_000L
+        private const val AUTO_CONNECT_DELAY_MILLIS = 1_200L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
     }
 }

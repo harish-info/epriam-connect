@@ -57,6 +57,36 @@ class PriamAppTest {
     }
 
     @Test
+    fun acceptedLaunchStartsScanningAutomatically() {
+        var scanRequested = false
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    PriamUiState(safetyAccepted = true),
+                    PriamActions(scan = { scanRequested = true }),
+                )
+            }
+        }
+
+        composeRule.runOnIdle { assert(scanRequested) }
+    }
+
+    @Test
+    fun launchDoesNotScanBeforeTermsAreAccepted() {
+        var scanRequested = false
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    PriamUiState(safetyAccepted = false),
+                    PriamActions(scan = { scanRequested = true }),
+                )
+            }
+        }
+
+        composeRule.runOnIdle { assert(!scanRequested) }
+    }
+
+    @Test
     fun selectedStrollerShowsConnectionProgress() {
         val candidate = DeviceCandidate("id", "e-Priam", -55, "Nearby device")
         composeRule.setContent {

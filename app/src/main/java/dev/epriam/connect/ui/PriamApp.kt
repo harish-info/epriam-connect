@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -134,6 +135,15 @@ internal data class PriamActions(
 @Composable
 internal fun PriamAppContent(state: PriamUiState, actions: PriamActions) {
     var showSettings by remember { mutableStateOf(false) }
+    LaunchedEffect(state.safetyAccepted) {
+        if (
+            state.safetyAccepted &&
+            state.connectionPhase == ConnectionPhase.IDLE &&
+            state.candidates.isEmpty()
+        ) {
+            actions.scan()
+        }
+    }
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { contentPadding ->
         if (!state.safetyAccepted) {
             DisclaimerScreen(
