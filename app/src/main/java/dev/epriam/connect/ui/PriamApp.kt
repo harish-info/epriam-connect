@@ -1000,7 +1000,7 @@ private fun driveModeIcon(mode: DriveMode): Int = when (mode) {
 private fun RockingSetup(state: PriamUiState, actions: PriamActions) {
     val active = state.rockingState is RockingState.Active
     val busy = state.rockingState is RockingState.Starting || state.rockingState is RockingState.Stopping
-    val controlsEnabled = !active && !busy
+    val controlsEnabled = !busy
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         RockingIntensity.entries.reversed().forEach { intensity ->
             IntensityTile(

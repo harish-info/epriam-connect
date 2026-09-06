@@ -199,6 +199,37 @@ class PriamAppTest {
     }
 
     @Test
+    fun activeRockingAllowsIntensityAndDurationChanges() {
+        var selectedIntensity: RockingIntensity? = null
+        var selectedDuration: Int? = null
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    demoState().copy(
+                        rockingState = RockingState.Active(
+                            intensity = RockingIntensity.MEDIUM,
+                            remainingSeconds = 20 * 60,
+                            configuredSeconds = 30 * 60,
+                            linkLossFlagSet = true,
+                        ),
+                    ),
+                    PriamActions(
+                        setIntensity = { selectedIntensity = it },
+                        setDuration = { selectedDuration = it },
+                    ),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("High").assertIsEnabled().performClick()
+        composeRule.onNodeWithText("60").assertIsEnabled().performClick()
+        composeRule.runOnIdle {
+            assert(selectedIntensity == RockingIntensity.HIGH)
+            assert(selectedDuration == 60)
+        }
+    }
+
+    @Test
     fun settingsKeepsDeveloperDetailsAwayFromMainControls() {
         composeRule.setContent {
             EPriamConnectTheme { PriamAppContent(demoState(), PriamActions()) }

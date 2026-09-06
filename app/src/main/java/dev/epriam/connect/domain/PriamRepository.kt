@@ -11,6 +11,7 @@ import dev.epriam.connect.protocol.RockingIntensity
 import dev.epriam.connect.protocol.RockingProtocolError
 import dev.epriam.connect.protocol.RockingRequest
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,6 +32,8 @@ class PriamRepository(context: Context) : PriamBleListener {
     private var scanTimeout: Job? = null
     private var autoConnectJob: Job? = null
     private var demoCountdown: Job? = null
+    private var rockingUpdateJob: Job? = null
+    private var pendingRockingUpdate: RockingRequest? = null
     private val disconnectExpected = AtomicBoolean(false)
 
     private val _state = MutableStateFlow(
@@ -203,12 +206,30 @@ class PriamRepository(context: Context) : PriamBleListener {
     fun setIntensity(intensity: RockingIntensity) {
         preferences.edit().putInt(KEY_INTENSITY, intensity.wireValue).apply()
         _state.update { it.copy(selectedIntensity = intensity) }
+        val active = _state.value.rockingState as? RockingState.Active ?: return
+        if (active.intensity == intensity && pendingRockingUpdate == null) return
+        if (_state.value.isDemo) {
+            runDemoCountdown(intensity, active.remainingSeconds)
+            return
+        }
+        val request = (pendingRockingUpdate ?: active.toUpdateRequest()).copy(intensity = intensity)
+        scheduleRockingUpdate(request)
     }
 
     fun setDuration(minutes: Int) {
         val bounded = minutes.coerceIn(5, 180)
         preferences.edit().putInt(KEY_DURATION_MINUTES, bounded).apply()
         _state.update { it.copy(selectedDurationMinutes = bounded) }
+        val active = _state.value.rockingState as? RockingState.Active ?: return
+        val durationSeconds = bounded * 60
+        if (_state.value.isDemo) {
+            runDemoCountdown(active.intensity, durationSeconds)
+            return
+        }
+        val request = (pendingRockingUpdate ?: active.toUpdateRequest()).copy(
+            durationSeconds = durationSeconds,
+        )
+        scheduleRockingUpdate(request)
     }
 
     fun setThemeMode(themeMode: ThemeMode) {
@@ -264,6 +285,8 @@ class PriamRepository(context: Context) : PriamBleListener {
     fun startRocking() {
         val current = _state.value
         if (!current.isReady || current.motionMayBeActive) return
+        rockingUpdateJob?.cancel()
+        pendingRockingUpdate = null
         val durationSeconds = current.selectedDurationMinutes * 60
         _state.update {
             it.copy(rockingState = RockingState.Starting(current.selectedIntensity, durationSeconds))
@@ -302,6 +325,8 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     fun stopRocking() {
+        rockingUpdateJob?.cancel()
+        pendingRockingUpdate = null
         demoCountdown?.cancel()
         if (_state.value.isDemo) {
             _state.update { it.copy(rockingState = RockingState.Off) }
@@ -344,6 +369,8 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     override fun onDisconnected(reason: Int) {
         if (disconnectExpected.getAndSet(false)) return
+        rockingUpdateJob?.cancel()
+        pendingRockingUpdate = null
         manager = null
         _state.update {
             it.copy(
@@ -403,6 +430,15 @@ class PriamRepository(context: Context) : PriamBleListener {
             )
             else -> RockingState.Off
         }
+        pendingRockingUpdate?.let { pending ->
+            if (
+                notification.intensity == pending.intensity &&
+                notification.configuredSeconds == pending.durationSeconds
+            ) {
+                pendingRockingUpdate = null
+                addDiagnostic("Rocking adjustment confirmed")
+            }
+        }
         _state.update { it.copy(rockingState = rockingState) }
         addDiagnostic("Rocking notify ${PriamProtocol.toHex(bytes)}")
     }
@@ -423,6 +459,30 @@ class PriamRepository(context: Context) : PriamBleListener {
                 remaining--
             }
             _state.update { it.copy(rockingState = RockingState.Off) }
+        }
+    }
+
+    private fun scheduleRockingUpdate(request: RockingRequest) {
+        pendingRockingUpdate = request
+        rockingUpdateJob?.cancel()
+        rockingUpdateJob = scope.launch {
+            delay(ROCKING_UPDATE_DEBOUNCE_MILLIS)
+            val packet = PriamProtocol.encodeRocking(request)
+            runCatching {
+                val activeManager = requireNotNull(manager) { "Bluetooth connection unavailable" }
+                activeManager.writeRocking(packet)
+            }.onSuccess {
+                addDiagnostic("Rocking adjustment ${PriamProtocol.toHex(packet)}")
+                delay(ROCKING_UPDATE_CONFIRMATION_MILLIS)
+                if (pendingRockingUpdate == request) {
+                    pendingRockingUpdate = null
+                    actionError("Rocking adjustment was not confirmed by the stroller")
+                }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                if (pendingRockingUpdate == request) pendingRockingUpdate = null
+                actionError("Rocking adjustment failed: ${it.message}")
+            }
         }
     }
 
@@ -487,6 +547,17 @@ class PriamRepository(context: Context) : PriamBleListener {
         private const val CURRENT_DISCLAIMER_VERSION = 2
         private const val SCAN_DURATION_MILLIS = 12_000L
         private const val AUTO_CONNECT_DELAY_MILLIS = 1_200L
+        private const val ROCKING_UPDATE_DEBOUNCE_MILLIS = 250L
+        private const val ROCKING_UPDATE_CONFIRMATION_MILLIS = 3_000L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
     }
 }
+
+internal fun RockingState.Active.toUpdateRequest(
+    intensity: RockingIntensity = this.intensity,
+    durationSeconds: Int = remainingSeconds.coerceAtLeast(1),
+) = RockingRequest(
+    intensity = intensity,
+    durationSeconds = durationSeconds,
+    linkLossFlagSet = linkLossFlagSet,
+)
