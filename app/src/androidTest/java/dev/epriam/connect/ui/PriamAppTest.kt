@@ -96,6 +96,10 @@ class PriamAppTest {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNodeWithText("Appearance").assertIsDisplayed()
         composeRule.onNodeWithText("PROTOCOL LOG", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("No events yet").assertIsNotDisplayed()
+        composeRule.onNodeWithContentDescription("Expand protocol log").performClick()
+        composeRule.onNodeWithText("No events yet").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Collapse protocol log").assertIsDisplayed()
     }
 
     private fun demoState() = PriamUiState(

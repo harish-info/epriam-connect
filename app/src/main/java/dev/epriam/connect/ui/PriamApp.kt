@@ -278,6 +278,7 @@ private fun SettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var protocolLogExpanded by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -309,24 +310,54 @@ private fun SettingsScreen(
             SectionTitle("Developer", "Raw Bluetooth information for troubleshooting.")
             Spacer(Modifier.height(14.dp))
             Surface(color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.medium) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("PROTOCOL LOG · ${state.diagnostics.size}", style = MaterialTheme.typography.labelLarge)
-                    if (state.diagnostics.isEmpty()) {
-                        Text("No events yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    state.diagnostics.take(30).forEach { event ->
+                Column(modifier = Modifier.fillMaxWidth().animateContentSize()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable { protocolLogExpanded = !protocolLogExpanded }
+                            .semantics {
+                                contentDescription = if (protocolLogExpanded) {
+                                    "Collapse protocol log"
+                                } else {
+                                    "Expand protocol log"
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(
-                            event.message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            "PROTOCOL LOG · ${state.diagnostics.size}",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Text(
+                            if (protocolLogExpanded) "Hide" else "Show",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelLarge,
                         )
                     }
-                    state.batteryRawValue?.let { raw ->
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                        Text("Battery raw value: $raw", style = MaterialTheme.typography.bodySmall)
+                    AnimatedVisibility(visible = protocolLogExpanded) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            HorizontalDivider()
+                            if (state.diagnostics.isEmpty()) {
+                                Text("No events yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            state.diagnostics.take(30).forEach { event ->
+                                Text(
+                                    event.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            state.batteryRawValue?.let { raw ->
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                Text("Battery raw value: $raw", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
                 }
             }
