@@ -1,0 +1,104 @@
+name: Build and publish APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  release-apk:
+    name: Signed release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Set build version
+        shell: bash
+        run: |
+          echo "EPRIAM_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "EPRIAM_VERSION_NAME=1.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Restore release signing key
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.EPRIAM_RELEASE_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          test -n "$SIGNING_KEYSTORE_BASE64"
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/epriam-release.jks"
+
+      - name: Test, lint, and build
+        env:
+          EPRIAM_SIGNING_STORE_FILE: ${{ runner.temp }}/epriam-release.jks
+          EPRIAM_SIGNING_STORE_PASSWORD: ${{ secrets.EPRIAM_RELEASE_STORE_PASSWORD }}
+          EPRIAM_SIGNING_KEY_ALIAS: ${{ secrets.EPRIAM_RELEASE_KEY_ALIAS }}
+          EPRIAM_SIGNING_KEY_PASSWORD: ${{ secrets.EPRIAM_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew testDebugUnitTest lintDebug assembleRelease
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          apk_source="app/build/outputs/apk/release/app-release.apk"
+          apk_signer="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -f "$apk_source"
+          test -n "$apk_signer"
+          "$apk_signer" verify --verbose "$apk_source"
+          cp "$apk_source" epriam-connect.apk
+          sha256sum epriam-connect.apk > epriam-connect.apk.sha256
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: epriam-connect-${{ github.sha }}
+          path: |
+            epriam-connect.apk
+            epriam-connect.apk.sha256
+          if-no-files-found: error
+
+      - name: Attest APK provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: epriam-connect.apk
+
+      - name: Publish latest development build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          release_notes="Automatically built from commit [${GITHUB_SHA}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) on the main branch. This is experimental, unofficial software. Read the repository safety disclaimer before use."
+
+          if ! gh release view continuous >/dev/null 2>&1; then
+            gh release create continuous \
+              --target "$GITHUB_SHA" \
+              --title "Latest development build" \
+              --notes "$release_notes" \
+              --prerelease
+          else
+            gh release edit continuous \
+              --title "Latest development build" \
+              --notes "$release_notes" \
+              --prerelease
+          fi
+
+          gh release upload continuous \
+            epriam-connect.apk \
+            epriam-connect.apk.sha256 \
+            --clobber

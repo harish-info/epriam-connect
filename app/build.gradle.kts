@@ -3,6 +3,17 @@ plugins {
   alias(libs.plugins.compose.compiler)
 }
 
+val releaseStoreFile = providers.environmentVariable("EPRIAM_SIGNING_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("EPRIAM_SIGNING_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("EPRIAM_SIGNING_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("EPRIAM_SIGNING_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "dev.epriam.connect"
     compileSdk = 36
@@ -10,13 +21,27 @@ android {
         applicationId = "dev.epriam.connect"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = providers.environmentVariable("EPRIAM_VERSION_CODE").orNull?.toIntOrNull() ?: 1
+        versionName = providers.environmentVariable("EPRIAM_VERSION_NAME").orNull ?: "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStoreFile))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

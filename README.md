@@ -15,6 +15,12 @@ An unofficial, open-source Android controller for the CYBEX e-Priam stroller.
 - Eco, Tour, and experimental Boost drive assistance
 - Battery status, light/dark themes, and offline demo mode
 
+## Download
+
+[Download the latest APK](https://github.com/harish-info/epriam-connect/releases/download/continuous/epriam-connect.apk)
+
+This development build is generated automatically from the latest commit on `main`. Review the safety disclaimer below before installing or using it.
+
 ## Build
 
 Requires JDK 17 and Android SDK 36.
