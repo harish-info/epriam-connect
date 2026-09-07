@@ -2,10 +2,6 @@ package dev.epriam.connect.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -59,7 +55,12 @@ internal fun RockingHero(state: PriamUiState) {
         modifier = Modifier.fillMaxWidth().animateContentSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        RockingArtwork(heroImage = heroImage, darkTheme = darkTheme, compact = active || busy)
+        RockingArtwork(
+            heroImage = heroImage,
+            darkTheme = darkTheme,
+            compact = active || busy,
+            rocking = active,
+        )
         if (!active && !busy) Spacer(Modifier.height(8.dp))
         Text(
             when {
@@ -81,32 +82,46 @@ internal fun RockingHero(state: PriamUiState) {
 }
 
 @Composable
-private fun RockingArtwork(heroImage: Int, darkTheme: Boolean, compact: Boolean) {
+private fun RockingArtwork(
+    heroImage: Int,
+    darkTheme: Boolean,
+    compact: Boolean,
+    rocking: Boolean,
+) {
     Box(
         modifier = Modifier.fillMaxWidth().height(if (compact) 126.dp else 174.dp),
         contentAlignment = Alignment.Center,
     ) {
-        RockingRings(
-            active = compact,
+        GroundRings(
+            active = rocking,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(if (compact) 66.dp else 76.dp)
                 .align(Alignment.BottomCenter),
         )
-        Image(
-            painter = painterResource(heroImage),
-            contentDescription = null,
-            modifier = Modifier.size(
-                width = if (compact) 172.dp else 210.dp,
-                height = if (compact) 128.dp else 158.dp,
-            ),
-            contentScale = ContentScale.Fit,
-            colorFilter = if (darkTheme) {
-                ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
-            } else {
-                null
-            },
+        val strollerModifier = Modifier.size(
+            width = if (compact) 172.dp else 210.dp,
+            height = if (compact) 128.dp else 158.dp,
         )
+        if (rocking) {
+            AnimatedStrollerArtwork(
+                heroImage = heroImage,
+                darkTheme = darkTheme,
+                modifier = strollerModifier,
+            )
+        } else {
+            Image(
+                painter = painterResource(heroImage),
+                contentDescription = null,
+                modifier = strollerModifier,
+                contentScale = ContentScale.Fit,
+                colorFilter = if (darkTheme) {
+                    ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                } else {
+                    null
+                },
+            )
+        }
     }
 }
 
@@ -144,22 +159,15 @@ private fun TimerCharacter(character: Char) {
 }
 
 @Composable
-private fun RockingRings(active: Boolean, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "rocking pulse")
-    val pulse by transition.animateFloat(
-        initialValue = 0.78f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(if (active) 1600 else 1), repeatMode = RepeatMode.Restart),
-        label = "pulse radius",
-    )
+private fun GroundRings(active: Boolean, modifier: Modifier = Modifier) {
     val color = MaterialTheme.colorScheme.primary
     Canvas(modifier) {
         val groundY = size.height * 0.72f
         repeat(5) { index ->
-            val widthScale = (0.34f + index * 0.13f) * pulse
+            val widthScale = 0.34f + index * 0.13f
             val ringHeight = size.height * (0.08f + index * 0.035f)
             drawOval(
-                color = color.copy(alpha = if (active) 0.52f else 0.10f),
+                color = color.copy(alpha = if (active) 0.34f else 0.10f),
                 topLeft = Offset(size.width * (1f - widthScale) / 2, groundY - ringHeight / 2),
                 size = Size(size.width * widthScale, ringHeight),
                 style = Stroke(1.2.dp.toPx()),
