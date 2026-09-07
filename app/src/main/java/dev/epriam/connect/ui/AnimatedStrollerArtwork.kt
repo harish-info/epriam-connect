@@ -35,13 +35,13 @@ internal fun AnimatedStrollerArtwork(
     intensity: RockingIntensity,
     modifier: Modifier = Modifier,
 ) {
-    val motionSpec = intensity.motionSpec
+    val cycleDurationMillis = intensity.cycleDurationMillis
     val transition = rememberInfiniteTransition(label = "stroller rocking")
     val motion by transition.animateFloat(
         initialValue = -1f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = motionSpec.durationMillis, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = cycleDurationMillis, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "stroller position",
@@ -54,8 +54,8 @@ internal fun AnimatedStrollerArtwork(
 
     Box(
         modifier = modifier.graphicsLayer {
-            translationX = motionSpec.travelDp.dp.toPx() * motion
-            rotationZ = motionSpec.tiltDegrees * motion
+            translationX = ROCKING_TRAVEL_DP.dp.toPx() * motion
+            rotationZ = ROCKING_TILT_DEGREES * motion
             transformOrigin = TransformOrigin(0.5f, 0.92f)
         },
     ) {
@@ -64,7 +64,7 @@ internal fun AnimatedStrollerArtwork(
             tint = tint,
             modifier = Modifier.fillMaxSize().clipOutsideWheels(),
         )
-        val wheelRotation = motionSpec.wheelRotationDegrees * motion
+        val wheelRotation = WHEEL_ROTATION_DEGREES * motion
         RotatingWheelLayer(heroImage, tint, REAR_WHEEL, rotation = wheelRotation)
         RotatingWheelLayer(heroImage, tint, FRONT_WHEEL, rotation = wheelRotation)
     }
@@ -135,36 +135,17 @@ private fun WheelRegion.boundsIn(width: Float, height: Float): Rect {
 
 private data class WheelRegion(val center: Offset, val radius: Float)
 
-private data class RockingMotionSpec(
-    val durationMillis: Int,
-    val travelDp: Float,
-    val tiltDegrees: Float,
-    val wheelRotationDegrees: Float,
-)
-
-private val RockingIntensity.motionSpec: RockingMotionSpec
+private val RockingIntensity.cycleDurationMillis: Int
     get() = when (this) {
-        RockingIntensity.LOW -> RockingMotionSpec(
-            durationMillis = 1_400,
-            travelDp = 3f,
-            tiltDegrees = 0.7f,
-            wheelRotationDegrees = 12f,
-        )
-        RockingIntensity.MEDIUM -> RockingMotionSpec(
-            durationMillis = 950,
-            travelDp = 7f,
-            tiltDegrees = 1.7f,
-            wheelRotationDegrees = 24f,
-        )
-        RockingIntensity.HIGH -> RockingMotionSpec(
-            durationMillis = 650,
-            travelDp = 10f,
-            tiltDegrees = 2.5f,
-            wheelRotationDegrees = 36f,
-        )
+        RockingIntensity.LOW -> 1_400
+        RockingIntensity.MEDIUM -> 950
+        RockingIntensity.HIGH -> 650
     }
 
 private val REAR_WHEEL = WheelRegion(center = Offset(469f, 735f), radius = 108f)
 private val FRONT_WHEEL = WheelRegion(center = Offset(812f, 766f), radius = 75f)
+private const val ROCKING_TRAVEL_DP = 5f
+private const val ROCKING_TILT_DEGREES = 1.2f
+private const val WHEEL_ROTATION_DEGREES = 18f
 private const val SOURCE_WIDTH = 1_200f
 private const val SOURCE_HEIGHT = 900f
