@@ -39,6 +39,15 @@ This project is not affiliated with or endorsed by CYBEX GmbH.
 - [Hardware validation](docs/hardware-validation.md)
 - [Implementation plan](docs/android-implementation-plan.md)
 
+## Credits
+
+The Bluetooth protocol research in this project was informed by:
+
+- [python-priam](https://github.com/vincegio/python-priam) by [@vincegio](https://github.com/vincegio) — the original Python proof of concept for controlling the e-Priam over Bluetooth.
+- [esPriam32](https://github.com/owanvik/esPriam32) by [@owanvik](https://github.com/owanvik) — an ESP32 implementation covering BLE connection, rocking, drive modes, and battery monitoring.
+
+Thank you to both maintainers for publishing their work.
+
 ## License
 
 [MIT](LICENSE)
