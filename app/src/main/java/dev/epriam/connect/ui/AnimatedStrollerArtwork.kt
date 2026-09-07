@@ -151,16 +151,16 @@ private val RockingIntensity.motionSpec: RockingMotionSpec
             wheelRotationDegrees = 12f,
         )
         RockingIntensity.MEDIUM -> RockingMotionSpec(
-            durationMillis = 1_100,
-            travelDp = 5f,
-            tiltDegrees = 1.2f,
-            wheelRotationDegrees = 18f,
+            durationMillis = 950,
+            travelDp = 7f,
+            tiltDegrees = 1.7f,
+            wheelRotationDegrees = 24f,
         )
         RockingIntensity.HIGH -> RockingMotionSpec(
-            durationMillis = 800,
-            travelDp = 7f,
-            tiltDegrees = 1.8f,
-            wheelRotationDegrees = 26f,
+            durationMillis = 650,
+            travelDp = 10f,
+            tiltDegrees = 2.5f,
+            wheelRotationDegrees = 36f,
         )
     }
 
