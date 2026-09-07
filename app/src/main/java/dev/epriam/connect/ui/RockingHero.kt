@@ -38,6 +38,7 @@ import dev.epriam.connect.R
 import dev.epriam.connect.domain.PriamUiState
 import dev.epriam.connect.domain.RockingState
 import dev.epriam.connect.domain.ThemeMode
+import dev.epriam.connect.protocol.RockingIntensity
 
 @Composable
 internal fun RockingHero(state: PriamUiState) {
@@ -59,7 +60,7 @@ internal fun RockingHero(state: PriamUiState) {
             heroImage = heroImage,
             darkTheme = darkTheme,
             compact = active || busy,
-            rocking = active,
+            rockingIntensity = activeState?.intensity,
         )
         if (!active && !busy) Spacer(Modifier.height(8.dp))
         Text(
@@ -86,14 +87,14 @@ private fun RockingArtwork(
     heroImage: Int,
     darkTheme: Boolean,
     compact: Boolean,
-    rocking: Boolean,
+    rockingIntensity: RockingIntensity?,
 ) {
     Box(
         modifier = Modifier.fillMaxWidth().height(if (compact) 126.dp else 174.dp),
         contentAlignment = Alignment.Center,
     ) {
         GroundRings(
-            active = rocking,
+            active = rockingIntensity != null,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(if (compact) 66.dp else 76.dp)
@@ -103,10 +104,11 @@ private fun RockingArtwork(
             width = if (compact) 172.dp else 210.dp,
             height = if (compact) 128.dp else 158.dp,
         )
-        if (rocking) {
+        if (rockingIntensity != null) {
             AnimatedStrollerArtwork(
                 heroImage = heroImage,
                 darkTheme = darkTheme,
+                intensity = rockingIntensity,
                 modifier = strollerModifier,
             )
         } else {
