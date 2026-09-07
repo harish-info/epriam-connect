@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -60,7 +61,7 @@ internal fun RockingHero(state: PriamUiState) {
             heroImage = heroImage,
             darkTheme = darkTheme,
             compact = active || busy,
-            rockingIntensity = activeState?.intensity,
+            rockingIntensity = if (active) state.selectedIntensity else null,
         )
         if (!active && !busy) Spacer(Modifier.height(8.dp))
         Text(
@@ -105,12 +106,14 @@ private fun RockingArtwork(
             height = if (compact) 128.dp else 158.dp,
         )
         if (rockingIntensity != null) {
-            AnimatedStrollerArtwork(
-                heroImage = heroImage,
-                darkTheme = darkTheme,
-                intensity = rockingIntensity,
-                modifier = strollerModifier,
-            )
+            key(rockingIntensity) {
+                AnimatedStrollerArtwork(
+                    heroImage = heroImage,
+                    darkTheme = darkTheme,
+                    intensity = rockingIntensity,
+                    modifier = strollerModifier,
+                )
+            }
         } else {
             Image(
                 painter = painterResource(heroImage),
