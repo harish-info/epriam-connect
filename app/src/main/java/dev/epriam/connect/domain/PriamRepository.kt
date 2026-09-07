@@ -8,8 +8,6 @@ import dev.epriam.connect.ble.PriamScanner
 import dev.epriam.connect.protocol.DriveMode
 import dev.epriam.connect.protocol.PriamProtocol
 import dev.epriam.connect.protocol.RockingIntensity
-import dev.epriam.connect.protocol.RockingProtocolError
-import dev.epriam.connect.protocol.RockingRequest
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,13 +28,14 @@ class PriamRepository(context: Context) : PriamBleListener {
     private var manager: PriamBleManager? = null
     private var scanTimeout: Job? = null
     private var autoConnectJob: Job? = null
-    private var demoCountdown: Job? = null
     private val disconnectExpected = AtomicBoolean(false)
 
     private val _state = MutableStateFlow(preferences.loadInitialState())
     val state: StateFlow<PriamUiState> = _state.asStateFlow()
-    private val rockingUpdates = RockingUpdateController(
+    private val rockingSession = RockingSessionController(
         scope = scope,
+        currentState = { _state.value },
+        updateState = { transform -> _state.update(transform) },
         writeRocking = { packet ->
             requireNotNull(manager) { "Bluetooth connection unavailable" }.writeRocking(packet)
         },
@@ -127,7 +126,8 @@ class PriamRepository(context: Context) : PriamBleListener {
             return
         }
         disconnectExpected.set(false)
-        manager = PriamBleManager(applicationContext, this)
+        val connectionManager = PriamBleManager(applicationContext, this)
+        manager = connectionManager
         _state.update {
             it.copy(
                 connectionPhase = ConnectionPhase.CONNECTING,
@@ -137,7 +137,7 @@ class PriamRepository(context: Context) : PriamBleListener {
         }
         addDiagnostic("Connecting to ${candidate.name} (${candidate.addressHint})")
         scope.launch {
-            runCatching { manager?.connectTo(device) }
+            runCatching { connectionManager.connectTo(device) }
                 .onFailure { fail("Connection failed: ${it.message ?: it.javaClass.simpleName}") }
         }
     }
@@ -150,7 +150,7 @@ class PriamRepository(context: Context) : PriamBleListener {
         scanner.stop()
         scanTimeout?.cancel()
         autoConnectJob?.cancel()
-        demoCountdown?.cancel()
+        rockingSession.cancelPendingWork()
         if (_state.value.isDemo) {
             leaveDemo()
             return
@@ -193,37 +193,23 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     fun exitDemo() {
         if (!_state.value.isDemo) return
-        demoCountdown?.cancel()
         leaveDemo()
     }
 
     fun setIntensity(intensity: RockingIntensity) {
         preferences.saveIntensity(intensity)
         _state.update { it.copy(selectedIntensity = intensity) }
-        val active = _state.value.rockingState as? RockingState.Active ?: return
-        if (active.intensity == intensity && rockingUpdates.pendingRequest == null) return
-        if (_state.value.isDemo) {
-            runDemoCountdown(intensity, active.remainingSeconds)
-            return
-        }
-        val request = (rockingUpdates.pendingRequest ?: active.toUpdateRequest()).copy(intensity = intensity)
-        rockingUpdates.schedule(request)
+        rockingSession.updateIntensity(intensity)
     }
 
     fun setDuration(minutes: Int) {
-        val bounded = minutes.coerceIn(5, 180)
+        val bounded = minutes.coerceIn(
+            RockingSessionLimits.MIN_DURATION_MINUTES,
+            RockingSessionLimits.MAX_DURATION_MINUTES,
+        )
         preferences.saveDurationMinutes(bounded)
         _state.update { it.copy(selectedDurationMinutes = bounded) }
-        val active = _state.value.rockingState as? RockingState.Active ?: return
-        val durationSeconds = bounded * 60
-        if (_state.value.isDemo) {
-            runDemoCountdown(active.intensity, durationSeconds)
-            return
-        }
-        val request = (rockingUpdates.pendingRequest ?: active.toUpdateRequest()).copy(
-            durationSeconds = durationSeconds,
-        )
-        rockingUpdates.schedule(request)
+        rockingSession.updateDuration(bounded)
     }
 
     fun setThemeMode(themeMode: ThemeMode) {
@@ -232,10 +218,7 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     fun acknowledgeStopped() {
-        if (_state.value.rockingState is RockingState.Unconfirmed) {
-            _state.update { it.copy(rockingState = RockingState.Off, statusMessage = connectionStatus(it)) }
-            addDiagnostic("Operator verified the stroller is stopped")
-        }
+        rockingSession.acknowledgeStopped()
     }
 
     fun setDriveMode(mode: DriveMode) {
@@ -277,81 +260,11 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     fun startRocking() {
-        val current = _state.value
-        if (!current.isReady || current.motionMayBeActive) return
-        rockingUpdates.cancel()
-        val durationSeconds = current.selectedDurationMinutes * 60
-        _state.update {
-            it.copy(rockingState = RockingState.Starting(current.selectedIntensity, durationSeconds))
-        }
-        if (current.isDemo) {
-            runDemoCountdown(current.selectedIntensity, durationSeconds)
-            return
-        }
-        scope.launch {
-            val packet = PriamProtocol.encodeRocking(
-                RockingRequest(current.selectedIntensity, durationSeconds),
-            )
-            runCatching {
-                requireNotNull(manager) { "Bluetooth connection unavailable" }.writeRocking(packet)
-            }
-                .onSuccess {
-                    addDiagnostic("Rocking write ${PriamProtocol.toHex(packet)}")
-                    delay(3_000)
-                    _state.update {
-                        if (it.rockingState is RockingState.Starting) {
-                            it.copy(
-                                rockingState = RockingState.Unconfirmed(
-                                    "Command sent but the stroller did not confirm it",
-                                ),
-                            )
-                        } else it
-                    }
-                }
-                .onFailure {
-                    actionError("Rocking write failed: ${it.message}")
-                    _state.update { state ->
-                        state.copy(rockingState = RockingState.Unconfirmed(
-                            "Rocking write was not confirmed; physically verify the stroller is still",
-                        ))
-                    }
-                }
-        }
+        rockingSession.start()
     }
 
     fun stopRocking() {
-        rockingUpdates.cancel()
-        demoCountdown?.cancel()
-        if (_state.value.isDemo) {
-            _state.update { it.copy(rockingState = RockingState.Off) }
-            addDiagnostic("Demo rocking stopped")
-            return
-        }
-        if (!_state.value.isReady) return
-        _state.update { it.copy(rockingState = RockingState.Stopping) }
-        scope.launch {
-            val packet = PriamProtocol.encodeStopCandidate()
-            runCatching {
-                requireNotNull(manager) { "Bluetooth connection unavailable" }.writeRocking(packet)
-            }
-                .onSuccess {
-                    addDiagnostic("Stop write ${PriamProtocol.toHex(packet)}")
-                    delay(2_000)
-                    _state.update {
-                        if (it.rockingState is RockingState.Stopping) {
-                            it.copy(rockingState = RockingState.Unconfirmed("Stop sent; verify the stroller stopped"))
-                        } else it
-                    }
-                }
-                .onFailure {
-                    actionError("Stop write failed: ${it.message}")
-                    _state.update { state ->
-                        state.copy(rockingState = RockingState.Unconfirmed(
-                            "Stop was not confirmed; physically verify the stroller stopped",
-                        ))
-                    }
-                }
-        }
+        rockingSession.stop()
     }
 
     override fun onConnected() {
@@ -365,7 +278,7 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     override fun onDisconnected(reason: Int) {
         if (disconnectExpected.getAndSet(false)) return
-        rockingUpdates.cancel()
+        rockingSession.cancelPendingWork()
         manager = null
         _state.update {
             it.copy(
@@ -394,6 +307,13 @@ class PriamRepository(context: Context) : PriamBleListener {
         addDiagnostic("Status notify ${PriamProtocol.toHex(bytes)}")
     }
 
+    override fun onBatteryLeds(bytes: ByteArray) {
+        PriamProtocol.decodeBatteryLeds(bytes)?.let { leds ->
+            _state.update { it.copy(batteryLeds = leds) }
+        }
+        addDiagnostic("Battery LEDs notify ${PriamProtocol.toHex(bytes)}")
+    }
+
     override fun onDriveMode(bytes: ByteArray) {
         val mode = bytes.firstOrNull()?.toInt()?.and(0xFF)?.let { value ->
             DriveMode.entries.firstOrNull { it.wireValue == value }
@@ -408,25 +328,7 @@ class PriamRepository(context: Context) : PriamBleListener {
             addDiagnostic("Short rocking notify ${PriamProtocol.toHex(bytes)}")
             return
         }
-        val rockingState = when {
-            notification.error is RockingProtocolError.BrakeNotEngaged -> RockingState.Rejected(
-                notification.error,
-                "Engage the parking brake and lock the front wheels",
-            )
-            notification.error != null -> RockingState.Rejected(
-                notification.error,
-                "The stroller rejected the rocking command",
-            )
-            notification.isActive -> RockingState.Active(
-                checkNotNull(notification.intensity),
-                notification.remainingSeconds,
-                notification.configuredSeconds,
-                notification.linkLossFlagSet,
-            )
-            else -> RockingState.Off
-        }
-        rockingUpdates.observe(notification)
-        _state.update { it.copy(rockingState = rockingState) }
+        rockingSession.observe(notification)
         addDiagnostic("Rocking notify ${PriamProtocol.toHex(bytes)}")
     }
 
@@ -434,23 +336,8 @@ class PriamRepository(context: Context) : PriamBleListener {
         if (message.contains("Error", ignoreCase = true)) addDiagnostic("BLE: $message")
     }
 
-    private fun runDemoCountdown(intensity: RockingIntensity, durationSeconds: Int) {
-        demoCountdown?.cancel()
-        demoCountdown = scope.launch {
-            var remaining = durationSeconds
-            while (remaining > 0) {
-                _state.update {
-                    it.copy(rockingState = RockingState.Active(intensity, remaining, durationSeconds, false))
-                }
-                delay(1_000)
-                remaining--
-            }
-            _state.update { it.copy(rockingState = RockingState.Off) }
-        }
-    }
-
     private fun leaveDemo() {
-        demoCountdown?.cancel()
+        rockingSession.cancelPendingWork()
         _state.update {
             if (!it.isDemo) it else PriamUiState(
                 safetyAccepted = it.safetyAccepted,
@@ -487,12 +374,6 @@ class PriamRepository(context: Context) : PriamBleListener {
         addDiagnostic(message)
     }
 
-    private fun connectionStatus(state: PriamUiState): String = when (state.connectionPhase) {
-        ConnectionPhase.READY -> "Connected"
-        ConnectionPhase.DEMO -> "Demo stroller connected"
-        else -> state.statusMessage
-    }
-
     private fun addDiagnostic(message: String) {
         _state.update {
             it.copy(
@@ -508,12 +389,3 @@ class PriamRepository(context: Context) : PriamBleListener {
         private const val MAX_DIAGNOSTIC_EVENTS = 100
     }
 }
-
-internal fun RockingState.Active.toUpdateRequest(
-    intensity: RockingIntensity = this.intensity,
-    durationSeconds: Int = remainingSeconds.coerceAtLeast(1),
-) = RockingRequest(
-    intensity = intensity,
-    durationSeconds = durationSeconds,
-    linkLossFlagSet = linkLossFlagSet,
-)

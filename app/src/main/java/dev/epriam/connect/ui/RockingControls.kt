@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import dev.epriam.connect.R
 import dev.epriam.connect.domain.PriamUiState
 import dev.epriam.connect.domain.RockingState
+import dev.epriam.connect.domain.RockingSessionLimits
 import dev.epriam.connect.protocol.DOCUMENTED_MAX_DURATION_SECONDS
 import dev.epriam.connect.protocol.RockingIntensity
 import kotlin.math.PI
@@ -128,12 +129,24 @@ private fun DurationStepper(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            DurationStepButton("−", enabled = enabled && selectedMinutes > MIN_DURATION_MINUTES) {
-                onSelected((selectedMinutes - DURATION_STEP_MINUTES).coerceAtLeast(MIN_DURATION_MINUTES))
+            DurationStepButton(
+                "−",
+                enabled = enabled && selectedMinutes > RockingSessionLimits.MIN_DURATION_MINUTES,
+            ) {
+                onSelected(
+                    (selectedMinutes - RockingSessionLimits.DURATION_STEP_MINUTES)
+                        .coerceAtLeast(RockingSessionLimits.MIN_DURATION_MINUTES),
+                )
             }
             Text("$selectedMinutes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            DurationStepButton("+", enabled = enabled && selectedMinutes < MAX_DURATION_MINUTES) {
-                onSelected((selectedMinutes + DURATION_STEP_MINUTES).coerceAtMost(MAX_DURATION_MINUTES))
+            DurationStepButton(
+                "+",
+                enabled = enabled && selectedMinutes < RockingSessionLimits.MAX_DURATION_MINUTES,
+            ) {
+                onSelected(
+                    (selectedMinutes + RockingSessionLimits.DURATION_STEP_MINUTES)
+                        .coerceAtMost(RockingSessionLimits.MAX_DURATION_MINUTES),
+                )
             }
         }
     }
@@ -146,7 +159,7 @@ private fun DurationPresets(
     onSelected: (Int) -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        DURATION_PRESETS.forEach { minutes ->
+        RockingSessionLimits.durationPresetsMinutes.forEach { minutes ->
             val selected = selectedMinutes == minutes
             Surface(
                 modifier = Modifier
@@ -317,8 +330,4 @@ private val RockingIntensity.waveShape: Pair<Float, Float>
         RockingIntensity.HIGH -> 0.40f to 5.5f
     }
 
-private val DURATION_PRESETS = listOf(30, 60, 90, 120, 180)
-private const val MIN_DURATION_MINUTES = 5
-private const val MAX_DURATION_MINUTES = 180
-private const val DURATION_STEP_MINUTES = 5
 private const val WAVE_POINT_COUNT = 72

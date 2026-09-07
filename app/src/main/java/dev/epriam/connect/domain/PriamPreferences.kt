@@ -1,6 +1,7 @@
 package dev.epriam.connect.domain
 
 import android.content.Context
+import androidx.core.content.edit
 import dev.epriam.connect.protocol.RockingIntensity
 
 internal class PriamPreferences(context: Context) {
@@ -13,26 +14,29 @@ internal class PriamPreferences(context: Context) {
         ) ?: RockingIntensity.LOW,
         selectedDurationMinutes = preferences
             .getInt(KEY_DURATION_MINUTES, DEFAULT_DURATION_MINUTES)
-            .coerceIn(MIN_DURATION_MINUTES, MAX_DURATION_MINUTES),
+            .coerceIn(
+                RockingSessionLimits.MIN_DURATION_MINUTES,
+                RockingSessionLimits.MAX_DURATION_MINUTES,
+            ),
         themeMode = preferences.getString(KEY_THEME_MODE, null)
             ?.let(::parseThemeMode)
             ?: ThemeMode.SYSTEM,
     )
 
     fun acceptSafetyDisclaimer() {
-        preferences.edit().putInt(KEY_DISCLAIMER_VERSION, CURRENT_DISCLAIMER_VERSION).apply()
+        preferences.edit { putInt(KEY_DISCLAIMER_VERSION, CURRENT_DISCLAIMER_VERSION) }
     }
 
     fun saveIntensity(intensity: RockingIntensity) {
-        preferences.edit().putInt(KEY_INTENSITY, intensity.wireValue).apply()
+        preferences.edit { putInt(KEY_INTENSITY, intensity.wireValue) }
     }
 
     fun saveDurationMinutes(minutes: Int) {
-        preferences.edit().putInt(KEY_DURATION_MINUTES, minutes).apply()
+        preferences.edit { putInt(KEY_DURATION_MINUTES, minutes) }
     }
 
     fun saveThemeMode(themeMode: ThemeMode) {
-        preferences.edit().putString(KEY_THEME_MODE, themeMode.name).apply()
+        preferences.edit { putString(KEY_THEME_MODE, themeMode.name) }
     }
 
     private fun parseThemeMode(value: String): ThemeMode? =
@@ -46,7 +50,5 @@ internal class PriamPreferences(context: Context) {
         const val KEY_THEME_MODE = "theme_mode"
         const val CURRENT_DISCLAIMER_VERSION = 2
         const val DEFAULT_DURATION_MINUTES = 30
-        const val MIN_DURATION_MINUTES = 5
-        const val MAX_DURATION_MINUTES = 180
     }
 }
