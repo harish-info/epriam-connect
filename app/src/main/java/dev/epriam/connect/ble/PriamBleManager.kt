@@ -18,6 +18,7 @@ interface PriamBleListener {
     fun onReady()
     fun onDisconnected(reason: Int)
     fun onStatus(bytes: ByteArray)
+    fun onBatteryLeds(bytes: ByteArray)
     fun onDriveMode(bytes: ByteArray)
     fun onRocking(bytes: ByteArray)
     fun onLog(message: String)
@@ -55,9 +56,11 @@ class PriamBleManager(
 
     override fun initialize() {
         subscribe(statusCharacteristic, listener::onStatus)
+        subscribe(ledCharacteristic, listener::onBatteryLeds)
         subscribe(driveCharacteristic, listener::onDriveMode)
         subscribe(rockingCharacteristic, listener::onRocking)
         read(statusCharacteristic, listener::onStatus)
+        read(ledCharacteristic, listener::onBatteryLeds)
         read(driveCharacteristic, listener::onDriveMode)
     }
 

@@ -25,7 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +44,7 @@ internal fun SettingsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var protocolLogExpanded by remember { mutableStateOf(false) }
+    var protocolLogExpanded by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -159,6 +159,9 @@ private fun ProtocolLogEntries(state: PriamUiState) {
         state.batteryRawValue?.let { rawValue ->
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             Text("Battery raw value: $rawValue", style = MaterialTheme.typography.bodySmall)
+        }
+        state.batteryLeds?.let { ledCount ->
+            Text("Battery LEDs: $ledCount", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

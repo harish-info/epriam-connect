@@ -9,13 +9,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.epriam.connect.domain.ConnectionPhase
 import dev.epriam.connect.domain.DeviceCandidate
 import dev.epriam.connect.domain.PriamRepository
@@ -30,7 +30,7 @@ fun PriamApp(
     onScan: () -> Unit,
     onStartRocking: () -> Unit,
 ) {
-    val state by repository.state.collectAsState()
+    val state by repository.state.collectAsStateWithLifecycle()
     PriamAppContent(
         state = state,
         actions = PriamActions(
@@ -69,7 +69,7 @@ internal data class PriamActions(
 
 @Composable
 internal fun PriamAppContent(state: PriamUiState, actions: PriamActions) {
-    var showSettings by remember { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     AutoScanAfterAcceptance(state = state, onScan = actions.scan)
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { contentPadding ->

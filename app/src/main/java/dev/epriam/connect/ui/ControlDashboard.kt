@@ -8,7 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -22,7 +22,7 @@ internal fun ControlDashboard(
     actions: PriamActions,
     onSettings: () -> Unit,
 ) {
-    var showDriveModes by remember { mutableStateOf(false) }
+    var showDriveModes by rememberSaveable { mutableStateOf(false) }
 
     BrandHeader(state = state, onSettings = onSettings, onExitDemo = actions.exitDemo)
     Spacer(Modifier.height(6.dp))
