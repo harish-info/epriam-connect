@@ -25,9 +25,11 @@ Requires JDK 17 and Android SDK 36.
 
 The APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
-## Safety
+## Disclaimer and safety
 
-This is an experimental enthusiast project. Test with an empty stroller, stay nearby, and physically verify that motion has stopped after any connection or command failure. Boost and sessions longer than 30 minutes are not exposed by the official app and may carry additional risk.
+This is an independent enthusiast project provided **as is**, without any warranty or guarantee of safety, reliability, or fitness for a particular purpose. By using this software, you accept full responsibility and assume all risk for its use, including personal injury, property damage, and damage to the stroller or connected devices. To the maximum extent permitted by applicable law, the author and contributors accept no liability for any loss, damage, injury, or other consequence arising from its use or misuse.
+
+Test only with an empty stroller, stay nearby, and physically verify that motion has stopped after any connection or command failure. Boost and sessions longer than 30 minutes are not exposed by the official app and may carry additional risk.
 
 This project is not affiliated with or endorsed by CYBEX GmbH.
 
