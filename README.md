@@ -50,4 +50,4 @@ Thank you to both maintainers for publishing their work.
 
 ## License
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE)
