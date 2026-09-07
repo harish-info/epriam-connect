@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.epriam.connect.BuildConfig
 import dev.epriam.connect.domain.ConnectionPhase
@@ -129,10 +130,17 @@ private fun CandidateCard(
             Box(Modifier.size(10.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(candidate.name, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    candidate.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     if (connecting) statusMessage else signalLabel(candidate.rssi),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (connecting) {

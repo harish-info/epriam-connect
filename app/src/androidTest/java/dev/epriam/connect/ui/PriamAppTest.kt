@@ -7,12 +7,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -106,6 +108,36 @@ class PriamAppTest {
 
         composeRule.onNodeWithText("Available strollers").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Connecting to stroller").assertIsDisplayed()
+    }
+
+    @Test
+    fun longConnectionStatusWrapsWithoutPushingHeaderActionsOffscreen() {
+        val status = "Connection lost — physically verify the stroller stopped before reconnecting"
+        composeRule.setContent {
+            EPriamConnectTheme {
+                Box(Modifier.size(width = 360.dp, height = 96.dp).testTag("header bounds")) {
+                    BrandHeader(
+                        state = PriamUiState(
+                            safetyAccepted = true,
+                            connectionPhase = ConnectionPhase.ERROR,
+                            statusMessage = status,
+                            batteryPercent = 78,
+                        ),
+                        onSettings = {},
+                    )
+                }
+            }
+        }
+
+        val headerBounds = composeRule.onNodeWithTag("header bounds").fetchSemanticsNode().boundsInRoot
+        val statusBounds = composeRule.onNodeWithText(status).fetchSemanticsNode().boundsInRoot
+        val batteryBounds = composeRule.onNodeWithText("78%").fetchSemanticsNode().boundsInRoot
+        val settingsBounds = composeRule.onNodeWithContentDescription("Settings").fetchSemanticsNode().boundsInRoot
+
+        assert(statusBounds.right <= batteryBounds.left)
+        assert(batteryBounds.right <= settingsBounds.left)
+        assert(settingsBounds.right <= headerBounds.right)
+        assert(statusBounds.height > batteryBounds.height)
     }
 
     @Test

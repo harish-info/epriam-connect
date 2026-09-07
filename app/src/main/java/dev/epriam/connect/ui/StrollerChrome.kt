@@ -32,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.epriam.connect.R
 import dev.epriam.connect.domain.ConnectionPhase
@@ -73,8 +74,10 @@ internal fun BrandHeader(
     ) {
         StrollerAppBadge(Modifier.size(42.dp))
         Spacer(Modifier.width(10.dp))
-        ConnectionIdentity(state)
-        Spacer(Modifier.weight(1f))
+        ConnectionIdentity(
+            state = state,
+            modifier = Modifier.weight(1f).padding(end = 8.dp),
+        )
         if (state.isDemo) {
             TextButton(onClick = onExitDemo) { Text("Exit preview") }
         } else {
@@ -85,16 +88,25 @@ internal fun BrandHeader(
 }
 
 @Composable
-private fun ConnectionIdentity(state: PriamUiState) {
-    Column {
-        Text("e-Priam", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Row(verticalAlignment = Alignment.CenterVertically) {
+private fun ConnectionIdentity(state: PriamUiState, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            "e-Priam",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).background(statusColor(state), CircleShape))
             Spacer(Modifier.width(7.dp))
             Text(
                 if (state.isReady) "Connected" else state.statusMessage,
+                modifier = Modifier.weight(1f),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -103,10 +115,12 @@ private fun ConnectionIdentity(state: PriamUiState) {
 @Composable
 private fun BatteryStatus(batteryPercent: Int?) {
     batteryPercent?.let { percent ->
-        BatteryGlyph(Modifier.size(22.dp), MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.width(6.dp))
-        Text("$percent%", style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.width(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BatteryGlyph(Modifier.size(22.dp), MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(6.dp))
+            Text("$percent%", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+            Spacer(Modifier.width(10.dp))
+        }
     }
 }
 
