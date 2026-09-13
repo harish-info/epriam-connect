@@ -25,6 +25,8 @@ class PriamSettingsPersistenceTest {
             setDuration(120)
             setIntensity(RockingIntensity.HIGH)
             setThemeMode(ThemeMode.DARK)
+            setThemePalette(ThemePalette.ROSE_GOLD)
+            setContinueRockingWhenDisconnected(true)
         }
 
         val restored = PriamRepository(context).state.value
@@ -32,5 +34,7 @@ class PriamSettingsPersistenceTest {
         assertEquals(120, restored.selectedDurationMinutes)
         assertEquals(RockingIntensity.HIGH, restored.selectedIntensity)
         assertEquals(ThemeMode.DARK, restored.themeMode)
+        assertEquals(ThemePalette.ROSE_GOLD, restored.themePalette)
+        assertEquals(true, restored.continueRockingWhenDisconnected)
     }
 }
