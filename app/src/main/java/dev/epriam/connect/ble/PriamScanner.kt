@@ -8,6 +8,7 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.ParcelUuid
+import android.os.SystemClock
 import dev.epriam.connect.domain.DeviceCandidate
 import dev.epriam.connect.protocol.CYBEX_COMPANY_IDENTIFIER
 import dev.epriam.connect.protocol.PriamUuids
@@ -42,11 +43,13 @@ class PriamScanner(context: Context) {
                 onCandidate(
                     DeviceCandidate(
                         id = address,
+                        identityKey = manufacturerData?.let { "cybex:${it.toHex()}" } ?: "address:$address",
                         name = result.scanRecord?.deviceName
                             ?: result.device.name
                             ?: "Cybex e-Priam",
                         rssi = result.rssi,
                         addressHint = address.takeLast(5),
+                        lastSeenElapsedRealtimeMillis = SystemClock.elapsedRealtime(),
                     ),
                 )
             }
@@ -75,4 +78,6 @@ class PriamScanner(context: Context) {
 
     @SuppressLint("MissingPermission")
     fun device(address: String) = adapter?.getRemoteDevice(address)
+
+    private fun ByteArray.toHex(): String = joinToString("") { byte -> "%02X".format(byte) }
 }

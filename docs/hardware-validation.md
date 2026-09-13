@@ -105,8 +105,10 @@ firmware—not merely the transport—accepts values beyond the official limit.
 4. Repeat with the bit set (`13 14 00`).
 5. Repeat each case once to exclude a transient link failure.
 
-Whichever variant stops on link loss becomes the mandatory default. The
-continue-on-disconnect variant remains an explicitly confirmed Expert option.
+The Samsung real-device run established that setting bit `0x10` allows rocking
+to continue after the phone turns Bluetooth off. Keep the bit clear by default,
+but do not claim that the clear variant stops on link loss until that case has
+also been captured and physically verified.
 
 ### Brake error
 

@@ -9,6 +9,7 @@ enum class ConnectionPhase {
     SCANNING,
     CONNECTING,
     DISCOVERING,
+    RECONNECTING,
     READY,
     DEMO,
     ERROR,
@@ -20,12 +21,29 @@ enum class ThemeMode {
     DARK,
 }
 
+enum class ThemePalette(val displayName: String) {
+    MINT("Mint"),
+    ROSE_GOLD("Rose gold"),
+    OCEAN("Ocean"),
+}
+
 data class DeviceCandidate(
     val id: String,
     val name: String,
     val rssi: Int,
     val addressHint: String,
+    val identityKey: String = id,
+    val lastSeenElapsedRealtimeMillis: Long = 0L,
 )
+
+internal fun List<DeviceCandidate>.updatedWith(candidate: DeviceCandidate): List<DeviceCandidate> =
+    (filterNot { it.identityKey == candidate.identityKey } + candidate)
+        .sortedByDescending(DeviceCandidate::rssi)
+
+internal fun DeviceCandidate.isFresh(
+    nowElapsedRealtimeMillis: Long,
+    maximumAgeMillis: Long,
+): Boolean = nowElapsedRealtimeMillis - lastSeenElapsedRealtimeMillis in 0..maximumAgeMillis
 
 sealed interface DriveState {
     data object Unknown : DriveState
@@ -66,7 +84,11 @@ data class PriamUiState(
     val rockingState: RockingState = RockingState.Off,
     val selectedIntensity: RockingIntensity = RockingIntensity.MEDIUM,
     val selectedDurationMinutes: Int = 30,
+    val continueRockingWhenDisconnected: Boolean = false,
+    val pendingContinueRockingWhenDisconnected: Boolean? = null,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val themePalette: ThemePalette = ThemePalette.MINT,
+    val canReconnect: Boolean = false,
     val isDemo: Boolean = false,
     val diagnostics: List<DiagnosticEvent> = emptyList(),
 ) {

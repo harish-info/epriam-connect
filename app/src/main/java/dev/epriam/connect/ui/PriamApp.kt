@@ -1,5 +1,6 @@
 package dev.epriam.connect.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,7 @@ import dev.epriam.connect.domain.DeviceCandidate
 import dev.epriam.connect.domain.PriamRepository
 import dev.epriam.connect.domain.PriamUiState
 import dev.epriam.connect.domain.ThemeMode
+import dev.epriam.connect.domain.ThemePalette
 import dev.epriam.connect.protocol.DriveMode
 import dev.epriam.connect.protocol.RockingIntensity
 
@@ -37,6 +39,7 @@ fun PriamApp(
             acceptSafety = repository::acceptSafety,
             scan = onScan,
             connect = repository::connect,
+            reconnect = repository::reconnect,
             disconnect = repository::disconnect,
             enterDemo = repository::enterDemo,
             exitDemo = repository::exitDemo,
@@ -44,6 +47,8 @@ fun PriamApp(
             setIntensity = repository::setIntensity,
             setDuration = repository::setDuration,
             setThemeMode = repository::setThemeMode,
+            setThemePalette = repository::setThemePalette,
+            setContinueRockingWhenDisconnected = repository::setContinueRockingWhenDisconnected,
             startRocking = onStartRocking,
             stopRocking = repository::stopRocking,
             acknowledgeStopped = repository::acknowledgeStopped,
@@ -55,6 +60,7 @@ internal data class PriamActions(
     val acceptSafety: () -> Unit = {},
     val scan: () -> Unit = {},
     val connect: (DeviceCandidate) -> Unit = {},
+    val reconnect: () -> Unit = {},
     val disconnect: () -> Unit = {},
     val enterDemo: () -> Unit = {},
     val exitDemo: () -> Unit = {},
@@ -62,6 +68,8 @@ internal data class PriamActions(
     val setIntensity: (RockingIntensity) -> Unit = {},
     val setDuration: (Int) -> Unit = {},
     val setThemeMode: (ThemeMode) -> Unit = {},
+    val setThemePalette: (ThemePalette) -> Unit = {},
+    val setContinueRockingWhenDisconnected: (Boolean) -> Unit = {},
     val startRocking: () -> Unit = {},
     val stopRocking: () -> Unit = {},
     val acknowledgeStopped: () -> Unit = {},
@@ -72,17 +80,21 @@ internal fun PriamAppContent(state: PriamUiState, actions: PriamActions) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     AutoScanAfterAcceptance(state = state, onScan = actions.scan)
 
+    if (showSettings && state.safetyAccepted) {
+        BackHandler { showSettings = false }
+        SettingsScreen(
+            state = state,
+            actions = actions,
+            onBack = { showSettings = false },
+        )
+        return
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { contentPadding ->
         when {
             !state.safetyAccepted -> DisclaimerScreen(
                 themeMode = state.themeMode,
                 onAccept = actions.acceptSafety,
-                modifier = Modifier.padding(contentPadding),
-            )
-            showSettings -> SettingsScreen(
-                state = state,
-                actions = actions,
-                onBack = { showSettings = false },
                 modifier = Modifier.padding(contentPadding),
             )
             else -> MainScreen(
@@ -121,7 +133,7 @@ private fun MainScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 14.dp),
     ) {
-        if (state.isReady) {
+        if (state.isReady || state.motionMayBeActive) {
             ControlDashboard(state = state, actions = actions, onSettings = onSettings)
         } else {
             ConnectionScreen(state = state, actions = actions, onSettings = onSettings)

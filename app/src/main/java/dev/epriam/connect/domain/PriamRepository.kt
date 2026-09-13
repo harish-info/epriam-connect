@@ -2,13 +2,13 @@ package dev.epriam.connect.domain
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.SystemClock
 import dev.epriam.connect.ble.PriamBleListener
 import dev.epriam.connect.ble.PriamBleManager
 import dev.epriam.connect.ble.PriamScanner
 import dev.epriam.connect.protocol.DriveMode
 import dev.epriam.connect.protocol.PriamProtocol
 import dev.epriam.connect.protocol.RockingIntensity
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class PriamRepository(context: Context) : PriamBleListener {
+class PriamRepository(context: Context) {
     private val applicationContext = context.applicationContext
     private val preferences = PriamPreferences(applicationContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -28,7 +28,15 @@ class PriamRepository(context: Context) : PriamBleListener {
     private var manager: PriamBleManager? = null
     private var scanTimeout: Job? = null
     private var autoConnectJob: Job? = null
-    private val disconnectExpected = AtomicBoolean(false)
+    private var connectionJob: Job? = null
+    private var reconnectRetryJob: Job? = null
+    private var connectionGeneration = 0L
+    private var connectionReady = false
+    private var lastCandidate: DeviceCandidate? = null
+    private var reconnectTarget: DeviceCandidate? = null
+    private var automaticReconnectActive = false
+    private var reconnectAttempt = 0
+    private var stopAfterReconnect = false
 
     private val _state = MutableStateFlow(preferences.loadInitialState())
     val state: StateFlow<PriamUiState> = _state.asStateFlow()
@@ -54,43 +62,86 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     @SuppressLint("MissingPermission")
     fun startScan() {
+        if (_state.value.motionMayBeActive && lastCandidate != null) {
+            reconnect()
+            return
+        }
+        cancelAutomaticReconnect()
+        startScan(reconnectIdentityKey = null)
+    }
+
+    private fun startScan(reconnectIdentityKey: String?) {
         if (!_state.value.safetyAccepted) return
         leaveDemo()
         if (!scanner.isBluetoothEnabled) {
-            _state.update {
-                it.copy(connectionPhase = ConnectionPhase.ERROR, statusMessage = "Turn on Bluetooth to scan")
+            if (reconnectIdentityKey == null) {
+                _state.update {
+                    it.copy(connectionPhase = ConnectionPhase.ERROR, statusMessage = "Turn on Bluetooth to scan")
+                }
+            } else {
+                retryReconnect("Bluetooth is off.")
             }
             return
         }
         scanTimeout?.cancel()
         autoConnectJob?.cancel()
+        reconnectRetryJob?.cancel()
+        val scanPhase = if (reconnectIdentityKey == null) {
+            ConnectionPhase.SCANNING
+        } else {
+            ConnectionPhase.RECONNECTING
+        }
         _state.update {
             it.copy(
-                connectionPhase = ConnectionPhase.SCANNING,
-                statusMessage = "Looking for a Cybex stroller…",
+                connectionPhase = scanPhase,
+                statusMessage = if (reconnectIdentityKey == null) {
+                    "Looking for a Cybex stroller…"
+                } else {
+                    "Looking for the stroller to reconnect…"
+                },
                 candidates = emptyList(),
             )
         }
         try {
+            var reconnectCandidateClaimed = false
             scanner.start(
-                onCandidate = { candidate ->
-                    val isNewCandidate = _state.value.candidates.none { it.id == candidate.id }
-                    _state.update { current ->
-                        val candidates = (current.candidates.filterNot { it.id == candidate.id } + candidate)
-                            .sortedByDescending(DeviceCandidate::rssi)
-                        current.copy(candidates = candidates, statusMessage = "Stroller found")
+                onCandidate = onCandidate@ { candidate ->
+                    if (_state.value.connectionPhase != scanPhase) return@onCandidate
+                    val isNewCandidate = _state.value.candidates.none {
+                        it.identityKey == candidate.identityKey
                     }
-                    if (isNewCandidate) scheduleAutoConnect(candidate)
+                    _state.update { current ->
+                        current.copy(
+                            candidates = current.candidates.updatedWith(candidate),
+                            statusMessage = "Stroller found",
+                        )
+                    }
+                    if (reconnectIdentityKey == candidate.identityKey) {
+                        if (reconnectCandidateClaimed) return@onCandidate
+                        reconnectCandidateClaimed = true
+                        addDiagnostic("Fresh stroller advertisement found; reconnecting directly")
+                        beginAutomaticReconnect(candidate, resetAttempts = false)
+                        connectFreshCandidate(candidate)
+                    } else if (reconnectIdentityKey == null && isNewCandidate) {
+                        scheduleAutoConnect(candidate)
+                    }
                 },
-                onError = ::fail,
+                onError = { message ->
+                    if (reconnectIdentityKey == null) fail(message) else retryReconnect(message)
+                },
             )
             scanTimeout = scope.launch {
                 delay(SCAN_DURATION_MILLIS)
+                if (reconnectCandidateClaimed) return@launch
                 scanner.stop()
                 autoConnectJob?.cancel()
                 val current = _state.value
                 val onlyCandidate = current.candidates.singleOrNull()
-                if (current.connectionPhase == ConnectionPhase.SCANNING && onlyCandidate != null) {
+                if (current.connectionPhase != scanPhase) return@launch
+                if (reconnectIdentityKey != null) {
+                    addDiagnostic("Reconnect scan timed out")
+                    retryReconnect("Couldn’t find the stroller.")
+                } else if (onlyCandidate != null) {
                     addDiagnostic("One stroller found at scan completion; connecting automatically")
                     connect(onlyCandidate)
                 } else {
@@ -113,6 +164,17 @@ class PriamRepository(context: Context) : PriamBleListener {
 
     @SuppressLint("MissingPermission")
     fun connect(candidate: DeviceCandidate) {
+        beginAutomaticReconnect(candidate, resetAttempts = true)
+        if (!candidate.isFresh(SystemClock.elapsedRealtime(), CANDIDATE_FRESHNESS_MILLIS)) {
+            addDiagnostic("Refreshing an expired stroller advertisement before connecting")
+            startScan(reconnectIdentityKey = candidate.identityKey)
+            return
+        }
+        connectFreshCandidate(candidate)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun connectFreshCandidate(candidate: DeviceCandidate) {
         scanner.stop()
         scanTimeout?.cancel()
         autoConnectJob?.cancel()
@@ -122,23 +184,77 @@ class PriamRepository(context: Context) : PriamBleListener {
             null
         }
         if (device == null) {
-            fail("The selected Bluetooth device is no longer available")
+            retryReconnect("The selected Bluetooth device is no longer available.")
             return
         }
-        disconnectExpected.set(false)
-        val connectionManager = PriamBleManager(applicationContext, this)
-        manager = connectionManager
+        lastCandidate = candidate
+        val recovery = _state.value.motionMayBeActive
+        val previousManager = manager
+        val generation = ++connectionGeneration
+        manager = null
+        connectionReady = false
+        connectionJob?.cancel()
         _state.update {
             it.copy(
-                connectionPhase = ConnectionPhase.CONNECTING,
+                connectionPhase = if (recovery) ConnectionPhase.RECONNECTING else ConnectionPhase.CONNECTING,
                 connectedDeviceName = candidate.name,
-                statusMessage = "Connecting to ${candidate.name}…",
+                statusMessage = if (recovery) {
+                    "Reconnecting to ${candidate.name}…"
+                } else {
+                    "Connecting to ${candidate.name}…"
+                },
+                canReconnect = true,
             )
         }
-        addDiagnostic("Connecting to ${candidate.name} (${candidate.addressHint})")
-        scope.launch {
+        addDiagnostic("${if (recovery) "Reconnecting" else "Connecting"} to ${candidate.name} (${candidate.addressHint})")
+        connectionJob = scope.launch {
+            previousManager?.disconnectAndClose()
+            if (generation != connectionGeneration) return@launch
+
+            val connectionManager = createManager(generation)
+            manager = connectionManager
             runCatching { connectionManager.connectTo(device) }
-                .onFailure { fail("Connection failed: ${it.message ?: it.javaClass.simpleName}") }
+                .onFailure { error ->
+                    if (generation != connectionGeneration) return@onFailure
+                    connectionManager.close()
+                    if (manager === connectionManager) manager = null
+                    addDiagnostic(
+                        "Connection retries exhausted: ${error.message ?: error.javaClass.simpleName}",
+                    )
+                    retryReconnect("Couldn’t connect. Close the Cybex app and move closer.")
+                }
+        }
+    }
+
+    fun reconnect() {
+        val candidate = lastCandidate ?: _state.value.candidates.singleOrNull()
+        if (candidate == null) {
+            actionError("Scan again so the stroller can be found")
+            startScan()
+            return
+        }
+        beginAutomaticReconnect(candidate, resetAttempts = true)
+        startScan(reconnectIdentityKey = candidate.identityKey)
+    }
+
+    fun onBluetoothStateChanged(enabled: Boolean) {
+        if (!automaticReconnectActive) return
+        if (enabled) {
+            addDiagnostic("Bluetooth is on; resuming automatic reconnect")
+            reconnectRetryJob?.cancel()
+            startScan(reconnectIdentityKey = reconnectTarget?.identityKey)
+        } else {
+            scanner.stop()
+            scanTimeout?.cancel()
+            reconnectRetryJob?.cancel()
+            _state.update {
+                it.copy(
+                    connectionPhase = ConnectionPhase.RECONNECTING,
+                    statusMessage = "Bluetooth is off — reconnect will resume automatically when it is on.",
+                    canReconnect = true,
+                )
+            }
+            addDiagnostic("Bluetooth turned off; automatic reconnect is waiting")
         }
     }
 
@@ -150,21 +266,26 @@ class PriamRepository(context: Context) : PriamBleListener {
         scanner.stop()
         scanTimeout?.cancel()
         autoConnectJob?.cancel()
+        cancelAutomaticReconnect()
         rockingSession.cancelPendingWork()
         if (_state.value.isDemo) {
             leaveDemo()
             return
         }
-        disconnectExpected.set(true)
+        val managerToClose = manager
+        manager = null
+        connectionReady = false
+        connectionJob?.cancel()
+        connectionGeneration++
         scope.launch {
-            manager?.disconnectAndWait()
-            manager = null
+            managerToClose?.disconnectAndClose()
             _state.update {
                 it.copy(
                     connectionPhase = ConnectionPhase.IDLE,
                     connectedDeviceName = null,
                     statusMessage = "Disconnected",
                     rockingState = RockingState.Off,
+                    canReconnect = false,
                 )
             }
         }
@@ -174,7 +295,13 @@ class PriamRepository(context: Context) : PriamBleListener {
         scanner.stop()
         scanTimeout?.cancel()
         autoConnectJob?.cancel()
+        cancelAutomaticReconnect()
+        val managerToClose = manager
         manager = null
+        connectionReady = false
+        connectionGeneration++
+        connectionJob?.cancel()
+        scope.launch { managerToClose?.disconnectAndClose() }
         _state.update {
             it.copy(
                 connectionPhase = ConnectionPhase.DEMO,
@@ -186,6 +313,7 @@ class PriamRepository(context: Context) : PriamBleListener {
                 driveState = DriveState.Observed(DriveMode.TOUR),
                 rockingState = RockingState.Off,
                 isDemo = true,
+                canReconnect = false,
             )
         }
         addDiagnostic("Demo mode started; no Bluetooth writes will be sent")
@@ -215,6 +343,36 @@ class PriamRepository(context: Context) : PriamBleListener {
     fun setThemeMode(themeMode: ThemeMode) {
         preferences.saveThemeMode(themeMode)
         _state.update { it.copy(themeMode = themeMode) }
+    }
+
+    fun setThemePalette(themePalette: ThemePalette) {
+        preferences.saveThemePalette(themePalette)
+        _state.update { it.copy(themePalette = themePalette) }
+    }
+
+    fun setContinueRockingWhenDisconnected(enabled: Boolean) {
+        if (_state.value.pendingContinueRockingWhenDisconnected != null) return
+        val activeSession = _state.value.rockingState is RockingState.Active && !_state.value.isDemo
+        if (!activeSession) {
+            applyDisconnectPolicyPreference(enabled)
+            rockingSession.updateDisconnectPolicy(enabled)
+            return
+        }
+
+        _state.update { it.copy(pendingContinueRockingWhenDisconnected = enabled) }
+        rockingSession.updateDisconnectPolicy(
+            continueWhenDisconnected = enabled,
+            onConfirmed = { applyDisconnectPolicyPreference(enabled) },
+            onCancelled = {
+                _state.update { state ->
+                    if (state.pendingContinueRockingWhenDisconnected == enabled) {
+                        state.copy(pendingContinueRockingWhenDisconnected = null)
+                    } else {
+                        state
+                    }
+                }
+            },
+        )
     }
 
     fun acknowledgeStopped() {
@@ -264,39 +422,76 @@ class PriamRepository(context: Context) : PriamBleListener {
     }
 
     fun stopRocking() {
-        rockingSession.stop()
+        val state = _state.value
+        if (!state.isReady && state.motionMayBeActive && state.canReconnect) {
+            stopAfterReconnect = true
+            _state.update {
+                it.copy(
+                    rockingState = RockingState.Stopping,
+                    statusMessage = "Reconnecting to stop rocking…",
+                )
+            }
+            reconnect()
+        } else {
+            rockingSession.stop()
+        }
     }
 
-    override fun onConnected() {
+    private fun onConnected() {
+        scanner.stop()
+        scanTimeout?.cancel()
+        autoConnectJob?.cancel()
         _state.update { it.copy(connectionPhase = ConnectionPhase.DISCOVERING, statusMessage = "Checking stroller services…") }
     }
 
-    override fun onReady() {
-        _state.update { it.copy(connectionPhase = ConnectionPhase.READY, statusMessage = "Connected") }
-        addDiagnostic("Required e-Priam service and motor characteristics found")
-    }
-
-    override fun onDisconnected(reason: Int) {
-        if (disconnectExpected.getAndSet(false)) return
-        rockingSession.cancelPendingWork()
-        manager = null
+    private fun onReady() {
+        connectionReady = true
+        cancelAutomaticReconnect()
         _state.update {
             it.copy(
-                connectionPhase = ConnectionPhase.ERROR,
-                statusMessage = if (it.motionMayBeActive) {
-                    "Connection lost — physically verify the stroller stopped"
-                } else {
-                    "Stroller disconnected (reason $reason)"
-                },
-                rockingState = if (it.motionMayBeActive) {
-                    RockingState.Unconfirmed("Connection lost; physically verify the stroller stopped")
-                } else RockingState.Off,
+                connectionPhase = ConnectionPhase.READY,
+                statusMessage = "Connected",
+                canReconnect = false,
             )
         }
-        addDiagnostic("Unexpected disconnect, reason $reason")
+        addDiagnostic("Required e-Priam service and motor characteristics found")
+        if (stopAfterReconnect) {
+            stopAfterReconnect = false
+            if (_state.value.motionMayBeActive) rockingSession.stop()
+        }
     }
 
-    override fun onStatus(bytes: ByteArray) {
+    private fun onDisconnected(reason: Int) {
+        val wasReady = connectionReady
+        connectionReady = false
+        rockingSession.cancelPendingWork()
+        if (!wasReady && _state.value.connectionPhase in setOf(
+                ConnectionPhase.CONNECTING,
+                ConnectionPhase.DISCOVERING,
+            )
+        ) {
+            addDiagnostic("Connection attempt ended (reason $reason); retry policy still active")
+            return
+        }
+        _state.update {
+            it.copy(
+                connectionPhase = if (wasReady) ConnectionPhase.RECONNECTING else ConnectionPhase.ERROR,
+                statusMessage = if (wasReady) {
+                    "Connection lost — reconnecting automatically…"
+                } else {
+                    "Couldn’t connect (reason $reason). Tap reconnect to retry."
+                },
+                canReconnect = lastCandidate != null,
+            )
+        }
+        addDiagnostic("${if (wasReady) "Connection lost; auto-reconnect active" else "Connection attempt failed"}, reason $reason")
+        if (wasReady) {
+            lastCandidate?.let { beginAutomaticReconnect(it, resetAttempts = true) }
+            startScan(reconnectIdentityKey = reconnectTarget?.identityKey)
+        }
+    }
+
+    private fun onStatus(bytes: ByteArray) {
         val battery = PriamProtocol.decodeBatteryStatus(bytes)
         _state.update {
             it.copy(
@@ -307,14 +502,14 @@ class PriamRepository(context: Context) : PriamBleListener {
         addDiagnostic("Status notify ${PriamProtocol.toHex(bytes)}")
     }
 
-    override fun onBatteryLeds(bytes: ByteArray) {
+    private fun onBatteryLeds(bytes: ByteArray) {
         PriamProtocol.decodeBatteryLeds(bytes)?.let { leds ->
             _state.update { it.copy(batteryLeds = leds) }
         }
         addDiagnostic("Battery LEDs notify ${PriamProtocol.toHex(bytes)}")
     }
 
-    override fun onDriveMode(bytes: ByteArray) {
+    private fun onDriveMode(bytes: ByteArray) {
         val mode = bytes.firstOrNull()?.toInt()?.and(0xFF)?.let { value ->
             DriveMode.entries.firstOrNull { it.wireValue == value }
         }
@@ -322,17 +517,24 @@ class PriamRepository(context: Context) : PriamBleListener {
         addDiagnostic("Drive notify ${PriamProtocol.toHex(bytes)}")
     }
 
-    override fun onRocking(bytes: ByteArray) {
+    private fun onRocking(bytes: ByteArray) {
         val notification = PriamProtocol.decodeRockingNotification(bytes)
         if (notification == null) {
             addDiagnostic("Short rocking notify ${PriamProtocol.toHex(bytes)}")
             return
         }
         rockingSession.observe(notification)
+        if (
+            notification.isActive &&
+            _state.value.pendingContinueRockingWhenDisconnected == null &&
+            _state.value.continueRockingWhenDisconnected != notification.linkLossFlagSet
+        ) {
+            applyDisconnectPolicyPreference(notification.linkLossFlagSet)
+        }
         addDiagnostic("Rocking notify ${PriamProtocol.toHex(bytes)}")
     }
 
-    override fun onLog(message: String) {
+    private fun onLog(message: String) {
         if (message.contains("Error", ignoreCase = true)) addDiagnostic("BLE: $message")
     }
 
@@ -343,10 +545,30 @@ class PriamRepository(context: Context) : PriamBleListener {
                 safetyAccepted = it.safetyAccepted,
                 selectedIntensity = it.selectedIntensity,
                 selectedDurationMinutes = it.selectedDurationMinutes,
+                continueRockingWhenDisconnected = it.continueRockingWhenDisconnected,
                 themeMode = it.themeMode,
+                themePalette = it.themePalette,
             )
         }
     }
+
+    private fun createManager(generation: Long): PriamBleManager = PriamBleManager(
+        context = applicationContext,
+        listener = object : PriamBleListener {
+            private inline fun ifCurrent(block: () -> Unit) {
+                if (generation == connectionGeneration) block()
+            }
+
+            override fun onConnected() = ifCurrent(this@PriamRepository::onConnected)
+            override fun onReady() = ifCurrent(this@PriamRepository::onReady)
+            override fun onDisconnected(reason: Int) = ifCurrent { this@PriamRepository.onDisconnected(reason) }
+            override fun onStatus(bytes: ByteArray) = ifCurrent { this@PriamRepository.onStatus(bytes) }
+            override fun onBatteryLeds(bytes: ByteArray) = ifCurrent { this@PriamRepository.onBatteryLeds(bytes) }
+            override fun onDriveMode(bytes: ByteArray) = ifCurrent { this@PriamRepository.onDriveMode(bytes) }
+            override fun onRocking(bytes: ByteArray) = ifCurrent { this@PriamRepository.onRocking(bytes) }
+            override fun onLog(message: String) = ifCurrent { this@PriamRepository.onLog(message) }
+        },
+    )
 
     private fun scheduleAutoConnect(firstCandidate: DeviceCandidate) {
         autoConnectJob?.cancel()
@@ -356,11 +578,64 @@ class PriamRepository(context: Context) : PriamBleListener {
             val onlyCandidate = current.candidates.singleOrNull()
             if (
                 current.connectionPhase == ConnectionPhase.SCANNING &&
-                onlyCandidate?.id == firstCandidate.id
+                onlyCandidate?.identityKey == firstCandidate.identityKey
             ) {
                 addDiagnostic("One stroller found; connecting automatically")
                 connect(onlyCandidate)
             }
+        }
+    }
+
+    private fun beginAutomaticReconnect(candidate: DeviceCandidate, resetAttempts: Boolean) {
+        automaticReconnectActive = true
+        reconnectTarget = candidate
+        if (resetAttempts) reconnectAttempt = 0
+    }
+
+    private fun retryReconnect(message: String) {
+        if (!automaticReconnectActive || reconnectTarget == null) {
+            fail(message)
+            return
+        }
+        scanner.stop()
+        scanTimeout?.cancel()
+        scanTimeout = null
+        autoConnectJob?.cancel()
+        val delayMillis = reconnectDelayMillis(reconnectAttempt++)
+        _state.update {
+            it.copy(
+                connectionPhase = ConnectionPhase.RECONNECTING,
+                statusMessage = "$message Retrying automatically…",
+                canReconnect = true,
+            )
+        }
+        addDiagnostic("Automatic reconnect retry scheduled in ${delayMillis / 1_000}s")
+        reconnectRetryJob?.cancel()
+        reconnectRetryJob = scope.launch {
+            delay(delayMillis)
+            if (scanner.isBluetoothEnabled) {
+                startScan(reconnectIdentityKey = reconnectTarget?.identityKey)
+            } else {
+                retryReconnect("Bluetooth is off.")
+            }
+        }
+    }
+
+    private fun cancelAutomaticReconnect() {
+        reconnectRetryJob?.cancel()
+        reconnectRetryJob = null
+        automaticReconnectActive = false
+        reconnectTarget = null
+        reconnectAttempt = 0
+    }
+
+    private fun applyDisconnectPolicyPreference(enabled: Boolean) {
+        preferences.saveContinueRockingWhenDisconnected(enabled)
+        _state.update {
+            it.copy(
+                continueRockingWhenDisconnected = enabled,
+                pendingContinueRockingWhenDisconnected = null,
+            )
         }
     }
 
@@ -386,6 +661,15 @@ class PriamRepository(context: Context) : PriamBleListener {
     companion object {
         private const val SCAN_DURATION_MILLIS = 12_000L
         private const val AUTO_CONNECT_DELAY_MILLIS = 1_200L
+        private const val CANDIDATE_FRESHNESS_MILLIS = 30_000L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
     }
+}
+
+internal fun reconnectDelayMillis(attempt: Int): Long = when (attempt.coerceAtLeast(0)) {
+    0 -> 1_000L
+    1 -> 2_000L
+    2 -> 5_000L
+    3 -> 10_000L
+    else -> 30_000L
 }

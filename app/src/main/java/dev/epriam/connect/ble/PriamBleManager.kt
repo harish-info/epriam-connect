@@ -62,6 +62,7 @@ class PriamBleManager(
         read(statusCharacteristic, listener::onStatus)
         read(ledCharacteristic, listener::onBatteryLeds)
         read(driveCharacteristic, listener::onDriveMode)
+        read(rockingCharacteristic, listener::onRocking)
     }
 
     private fun read(
@@ -97,7 +98,7 @@ class PriamBleManager(
         connect(device)
             .useAutoConnect(false)
             .timeout(15_000)
-            .retry(2, 400)
+            .retry(3, 1_000)
             .suspend()
     }
 
@@ -133,10 +134,19 @@ class PriamBleManager(
         }
     }
 
+    suspend fun disconnectAndClose() {
+        try {
+            disconnectAndWait()
+        } finally {
+            close()
+        }
+    }
+
     override fun onDeviceConnecting(device: BluetoothDevice) = Unit
     override fun onDeviceConnected(device: BluetoothDevice) = listener.onConnected()
-    override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) =
-        listener.onDisconnected(reason)
+    override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) {
+        listener.onLog("Connection attempt failed (reason $reason)")
+    }
     override fun onDeviceReady(device: BluetoothDevice) = listener.onReady()
     override fun onDeviceDisconnecting(device: BluetoothDevice) = Unit
     override fun onDeviceDisconnected(device: BluetoothDevice, reason: Int) =

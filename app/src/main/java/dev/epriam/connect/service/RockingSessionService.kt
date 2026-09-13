@@ -13,7 +13,10 @@ import androidx.core.app.ServiceCompat
 import dev.epriam.connect.MainActivity
 import dev.epriam.connect.PriamApplication
 import dev.epriam.connect.R
+import dev.epriam.connect.domain.ConnectionPhase
 import dev.epriam.connect.domain.RockingState
+import dev.epriam.connect.domain.ThemePalette
+import dev.epriam.connect.theme.notificationAccentArgb
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,15 +37,32 @@ class RockingSessionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val repository = (application as PriamApplication).repository
         if (intent?.action == ACTION_STOP) repository.stopRocking()
-        startInForeground("Starting…")
+        startInForeground("Starting…", repository.state.value.themePalette)
         observer?.cancel()
         observer = scope.launch {
             repository.state.collectLatest { state ->
+                if (state.connectionPhase == ConnectionPhase.RECONNECTING) {
+                    startInForeground(
+                        if (state.rockingState is RockingState.Stopping) {
+                            "Reconnecting to stop rocking…"
+                        } else {
+                            "Connection lost — reconnecting…"
+                        },
+                        state.themePalette,
+                    )
+                    return@collectLatest
+                }
                 when (val rocking = state.rockingState) {
-                    is RockingState.Active -> startInForeground(formatRemaining(rocking.remainingSeconds))
-                    is RockingState.Starting -> startInForeground("Starting…")
-                    is RockingState.Stopping -> startInForeground("Stopping…")
-                    is RockingState.Unconfirmed -> startInForeground("Status unconfirmed — verify stroller")
+                    is RockingState.Active -> startInForeground(
+                        formatRemaining(rocking.remainingSeconds),
+                        state.themePalette,
+                    )
+                    is RockingState.Starting -> startInForeground("Starting…", state.themePalette)
+                    is RockingState.Stopping -> startInForeground("Stopping…", state.themePalette)
+                    is RockingState.Unconfirmed -> startInForeground(
+                        "Status unconfirmed — verify stroller",
+                        state.themePalette,
+                    )
                     else -> stopSelf()
                 }
             }
@@ -50,7 +70,7 @@ class RockingSessionService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startInForeground(content: String) {
+    private fun startInForeground(content: String, themePalette: ThemePalette) {
         val openIntent = PendingIntent.getActivity(
             this,
             0,
@@ -64,7 +84,8 @@ class RockingSessionService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stroller)
+            .setSmallIcon(R.drawable.ic_notification_stroller)
+            .setColor(themePalette.notificationAccentArgb())
             .setContentTitle(getString(R.string.rocking_notification_title))
             .setContentText(content)
             .setContentIntent(openIntent)
