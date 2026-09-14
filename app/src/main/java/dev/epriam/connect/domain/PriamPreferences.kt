@@ -18,9 +18,16 @@ internal class PriamPreferences(context: Context) {
                 RockingSessionLimits.MIN_DURATION_MINUTES,
                 RockingSessionLimits.MAX_DURATION_MINUTES,
             ),
+        continueRockingWhenDisconnected = preferences.getBoolean(
+            KEY_CONTINUE_ROCKING_WHEN_DISCONNECTED,
+            false,
+        ),
         themeMode = preferences.getString(KEY_THEME_MODE, null)
             ?.let(::parseThemeMode)
             ?: ThemeMode.SYSTEM,
+        themePalette = preferences.getString(KEY_THEME_PALETTE, null)
+            ?.let(::parseThemePalette)
+            ?: ThemePalette.MINT,
     )
 
     fun acceptSafetyDisclaimer() {
@@ -35,19 +42,32 @@ internal class PriamPreferences(context: Context) {
         preferences.edit { putInt(KEY_DURATION_MINUTES, minutes) }
     }
 
+    fun saveContinueRockingWhenDisconnected(enabled: Boolean) {
+        preferences.edit { putBoolean(KEY_CONTINUE_ROCKING_WHEN_DISCONNECTED, enabled) }
+    }
+
     fun saveThemeMode(themeMode: ThemeMode) {
         preferences.edit { putString(KEY_THEME_MODE, themeMode.name) }
     }
 
+    fun saveThemePalette(themePalette: ThemePalette) {
+        preferences.edit { putString(KEY_THEME_PALETTE, themePalette.name) }
+    }
+
     private fun parseThemeMode(value: String): ThemeMode? =
         runCatching { ThemeMode.valueOf(value) }.getOrNull()
+
+    private fun parseThemePalette(value: String): ThemePalette? =
+        runCatching { ThemePalette.valueOf(value) }.getOrNull()
 
     private companion object {
         const val PREFERENCES_NAME = "priam"
         const val KEY_DISCLAIMER_VERSION = "disclaimer_version"
         const val KEY_INTENSITY = "rocking_intensity"
         const val KEY_DURATION_MINUTES = "rocking_duration_minutes"
+        const val KEY_CONTINUE_ROCKING_WHEN_DISCONNECTED = "continue_rocking_when_disconnected"
         const val KEY_THEME_MODE = "theme_mode"
+        const val KEY_THEME_PALETTE = "theme_palette"
         const val CURRENT_DISCLAIMER_VERSION = 2
         const val DEFAULT_DURATION_MINUTES = 30
     }

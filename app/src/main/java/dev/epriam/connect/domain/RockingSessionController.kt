@@ -50,6 +50,38 @@ internal class RockingSessionController(
         liveUpdates.schedule(request)
     }
 
+    fun updateDisconnectPolicy(
+        continueWhenDisconnected: Boolean,
+        onConfirmed: () -> Unit = {},
+        onCancelled: () -> Unit = {},
+    ) {
+        val active = currentState().rockingState as? RockingState.Active
+        if (active == null) {
+            onConfirmed()
+            return
+        }
+        val linkLossFlagSet = continueWhenDisconnected
+        if (active.linkLossFlagSet == linkLossFlagSet && liveUpdates.pendingRequest == null) {
+            onConfirmed()
+            return
+        }
+        if (currentState().isDemo) {
+            updateState {
+                it.copy(rockingState = active.copy(linkLossFlagSet = linkLossFlagSet))
+            }
+            onConfirmed()
+            return
+        }
+        val request = (liveUpdates.pendingRequest ?: active.toUpdateRequest()).copy(
+            linkLossFlagSet = linkLossFlagSet,
+        )
+        liveUpdates.schedule(
+            request = request,
+            onConfirmed = onConfirmed,
+            onCancelled = onCancelled,
+        )
+    }
+
     fun start() {
         val state = currentState()
         if (!state.isReady || state.motionMayBeActive) return
@@ -63,7 +95,11 @@ internal class RockingSessionController(
             runDemoCountdown(state.selectedIntensity, durationSeconds)
             return
         }
-        sendStartCommand(state.selectedIntensity, durationSeconds)
+        sendStartCommand(
+            intensity = state.selectedIntensity,
+            durationSeconds = durationSeconds,
+            continueWhenDisconnected = state.continueRockingWhenDisconnected,
+        )
     }
 
     fun stop() {
@@ -99,9 +135,20 @@ internal class RockingSessionController(
         demoCountdown = null
     }
 
-    private fun sendStartCommand(intensity: RockingIntensity, durationSeconds: Int) {
+    private fun sendStartCommand(
+        intensity: RockingIntensity,
+        durationSeconds: Int,
+        continueWhenDisconnected: Boolean,
+    ) {
         scope.launch {
-            val packet = PriamProtocol.encodeRocking(RockingRequest(intensity, durationSeconds))
+            val packet = PriamProtocol.encodeRocking(
+                RockingRequest(
+                    intensity = intensity,
+                    durationSeconds = durationSeconds,
+                    // Real-device testing shows bit 0x10 keeps rocking active after link loss.
+                    linkLossFlagSet = continueWhenDisconnected,
+                ),
+            )
             runCatching { writeRocking(packet) }
                 .onSuccess {
                     onDiagnostic("Rocking write ${PriamProtocol.toHex(packet)}")
@@ -174,7 +221,7 @@ internal class RockingSessionController(
                             intensity = intensity,
                             remainingSeconds = remaining,
                             configuredSeconds = durationSeconds,
-                            linkLossFlagSet = false,
+                            linkLossFlagSet = currentState().continueRockingWhenDisconnected,
                         ),
                     )
                 }

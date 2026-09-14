@@ -124,8 +124,8 @@ percentage slider or its one-byte minute field.
 - `python-priam` writes a three-byte packet with intensity `0`; its sample retains a nonzero duration.
 - `esPriam32` writes a single `00` byte and reports success, but does not preserve raw confirmation evidence.
 - Use `00 00 00` as the initial stop candidate, then replace it with the exact official-app write found in capture.
-- Bit `0x10` in byte 0 is associated with continue/stop-on-disconnect behavior, but the polarity is unknown. The source variable name and Cybex's default safety behavior do not prove the same polarity.
-- Until the hardware test identifies the safe polarity, do not expose “continue after disconnect.” Keep a foreground connection for active sessions and issue an explicit stop during orderly teardown.
+- A Samsung real-device run showed that setting bit `0x10` in byte 0 allows rocking to continue when the phone turns Bluetooth off. The clear variant still needs a recorded hardware check before stop-on-link-loss can be claimed as confirmed behavior.
+- Keep the bit clear by default and reserve the set variant for the explicit “Continue if phone disconnects” option. Keep a foreground connection for active sessions and issue an explicit stop during orderly teardown.
 
 ## Rocking notification
 

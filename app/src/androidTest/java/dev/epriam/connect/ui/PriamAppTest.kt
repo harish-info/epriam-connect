@@ -12,6 +12,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -24,6 +26,7 @@ import dev.epriam.connect.domain.DeviceCandidate
 import dev.epriam.connect.domain.DriveState
 import dev.epriam.connect.domain.PriamUiState
 import dev.epriam.connect.domain.RockingState
+import dev.epriam.connect.domain.ThemePalette
 import dev.epriam.connect.protocol.DriveMode
 import dev.epriam.connect.protocol.RockingIntensity
 import dev.epriam.connect.theme.EPriamConnectTheme
@@ -108,6 +111,54 @@ class PriamAppTest {
 
         composeRule.onNodeWithText("Available strollers").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Connecting to stroller").assertIsDisplayed()
+    }
+
+    @Test
+    fun failedConnectionOffersReconnectAndRetries() {
+        var reconnectRequested = false
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    PriamUiState(
+                        safetyAccepted = true,
+                        connectionPhase = ConnectionPhase.ERROR,
+                        statusMessage = "Couldn’t connect. Tap reconnect to retry.",
+                        canReconnect = true,
+                    ),
+                    PriamActions(reconnect = { reconnectRequested = true }),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Reconnect").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assert(reconnectRequested) }
+    }
+
+    @Test
+    fun linkLossShowsReconnectInsteadOfSendStopError() {
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    demoState().copy(
+                        connectionPhase = ConnectionPhase.RECONNECTING,
+                        isDemo = false,
+                        statusMessage = "Connection lost — reconnecting automatically…",
+                        canReconnect = true,
+                        rockingState = RockingState.Active(
+                            intensity = RockingIntensity.MEDIUM,
+                            remainingSeconds = 600,
+                            configuredSeconds = 1_800,
+                            linkLossFlagSet = false,
+                        ),
+                    ),
+                    PriamActions(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Reconnect now").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Reconnect and stop").assertIsDisplayed()
+        composeRule.onNodeWithText("Send stop again").assertIsNotDisplayed()
     }
 
     @Test
@@ -275,6 +326,85 @@ class PriamAppTest {
         composeRule.onNodeWithContentDescription("Expand protocol log").performClick()
         composeRule.onNodeWithText("No events yet").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Collapse protocol log").assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsUsesAppBarBackNavigation() {
+        composeRule.setContent {
+            EPriamConnectTheme { PriamAppContent(demoState(), PriamActions()) }
+        }
+
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNodeWithText("Settings").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Back").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Settings").assertIsDisplayed()
+        composeRule.onNodeWithText("Appearance").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun settingsPersistsExplicitContinueOnDisconnectChoice() {
+        composeRule.setContent {
+            var state by remember { mutableStateOf(demoState()) }
+            EPriamConnectTheme {
+                PriamAppContent(
+                    state,
+                    PriamActions(
+                        setContinueRockingWhenDisconnected = {
+                            state = state.copy(continueRockingWhenDisconnected = it)
+                        },
+                    ),
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNodeWithContentDescription("Continue rocking when disconnected")
+            .performScrollTo()
+            .assertIsOff()
+        composeRule.onNodeWithText("Continue if phone disconnects").performScrollTo().performClick()
+        composeRule.onNodeWithContentDescription("Continue rocking when disconnected").assertIsOn()
+        composeRule.onNodeWithText("The stroller may keep moving", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsKeepsAppliedDisconnectPolicyWhileAnActiveUpdateIsPending() {
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    demoState().copy(
+                        continueRockingWhenDisconnected = false,
+                        pendingContinueRockingWhenDisconnected = true,
+                    ),
+                    PriamActions(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNodeWithContentDescription("Continue rocking when disconnected")
+            .performScrollTo()
+            .assertIsOff()
+            .assertIsNotEnabled()
+        composeRule.onNodeWithText("Updating the active rocking session…").assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsOffersThreeColorPalettes() {
+        var selectedPalette: ThemePalette? = null
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    demoState(),
+                    PriamActions(setThemePalette = { selectedPalette = it }),
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNodeWithText("Mint").assertIsDisplayed()
+        composeRule.onNodeWithText("Rose gold").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Ocean").assertIsDisplayed()
+        composeRule.runOnIdle { assert(selectedPalette == ThemePalette.ROSE_GOLD) }
     }
 
     private fun demoState() = PriamUiState(

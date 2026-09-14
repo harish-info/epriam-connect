@@ -68,7 +68,10 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !darkTheme
                 }
             }
-            EPriamConnectTheme(darkTheme = darkTheme) {
+            EPriamConnectTheme(
+                darkTheme = darkTheme,
+                palette = state.themePalette,
+            ) {
                 PriamApp(
                     repository = repository,
                     onScan = ::requestScan,

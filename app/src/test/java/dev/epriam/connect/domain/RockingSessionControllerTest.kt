@@ -16,7 +16,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class RockingSessionControllerTest {
     @Test
-    fun `start writes selected session and notification keeps it active`() = runTest {
+    fun `start defaults to stop on disconnect with link loss flag clear`() = runTest {
         var state = readyState()
         val writes = mutableListOf<ByteArray>()
         val controller = controller(state = { state }, updateState = { state = it }, writes = writes)
@@ -27,7 +27,7 @@ class RockingSessionControllerTest {
         assertTrue(state.rockingState is RockingState.Starting)
         assertArrayEquals(
             PriamProtocol.encodeRocking(
-                RockingRequest(RockingIntensity.HIGH, 3_600),
+                RockingRequest(RockingIntensity.HIGH, 3_600, linkLossFlagSet = false),
             ),
             writes.single(),
         )
@@ -37,6 +37,66 @@ class RockingSessionControllerTest {
         runCurrent()
 
         assertTrue(state.rockingState is RockingState.Active)
+    }
+
+    @Test
+    fun `continue on disconnect sets continue-on-link-loss flag`() = runTest {
+        var state = readyState().copy(continueRockingWhenDisconnected = true)
+        val writes = mutableListOf<ByteArray>()
+        val controller = controller(state = { state }, updateState = { state = it }, writes = writes)
+
+        controller.start()
+        runCurrent()
+
+        assertArrayEquals(
+            PriamProtocol.encodeRocking(
+                RockingRequest(RockingIntensity.HIGH, 3_600, linkLossFlagSet = true),
+            ),
+            writes.single(),
+        )
+    }
+
+    @Test
+    fun `disconnect policy change updates an active session`() = runTest {
+        var state = readyState().copy(
+            rockingState = RockingState.Active(
+                RockingIntensity.HIGH,
+                remainingSeconds = 1_200,
+                configuredSeconds = 1_800,
+                linkLossFlagSet = false,
+            ),
+        )
+        val writes = mutableListOf<ByteArray>()
+        var confirmed = false
+        val controller = controller(state = { state }, updateState = { state = it }, writes = writes)
+
+        controller.updateDisconnectPolicy(
+            continueWhenDisconnected = true,
+            onConfirmed = { confirmed = true },
+        )
+        advanceTimeBy(250)
+        runCurrent()
+
+        assertArrayEquals(
+            PriamProtocol.encodeRocking(
+                RockingRequest(RockingIntensity.HIGH, 1_200, linkLossFlagSet = true),
+            ),
+            writes.single(),
+        )
+        assertEquals(false, confirmed)
+
+        controller.observe(
+            RockingNotification(
+                intensity = RockingIntensity.HIGH,
+                remainingSeconds = 1_200,
+                configuredSeconds = 1_200,
+                linkLossFlagSet = true,
+                error = null,
+                raw = byteArrayOf(),
+            ),
+        )
+
+        assertEquals(true, confirmed)
     }
 
     @Test

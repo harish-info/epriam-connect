@@ -56,9 +56,22 @@ internal fun ConnectionScreen(
         "Keep the e-Priam powered on and nearby.",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(24.dp))
-    ConnectionGuide(scanning = state.connectionPhase == ConnectionPhase.SCANNING)
-    Spacer(Modifier.height(24.dp))
+    if (state.canReconnect && state.connectionPhase in reconnectablePhases) {
+        Spacer(Modifier.height(20.dp))
+        WarningPanel(state.statusMessage) {
+            Button(
+                onClick = actions.reconnect,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text(if (state.connectionPhase == ConnectionPhase.RECONNECTING) "Retry now" else "Reconnect")
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+    } else {
+        Spacer(Modifier.height(24.dp))
+        ConnectionGuide(scanning = state.connectionPhase == ConnectionPhase.SCANNING)
+        Spacer(Modifier.height(24.dp))
+    }
 
     (state.rockingState as? RockingState.Unconfirmed)?.let { unconfirmed ->
         WarningPanel(unconfirmed.message) {
@@ -227,7 +240,11 @@ private fun StrollerRadar(scanning: Boolean, modifier: Modifier = Modifier) {
 }
 
 private val ConnectionPhase.isConnecting: Boolean
-    get() = this == ConnectionPhase.CONNECTING || this == ConnectionPhase.DISCOVERING
+    get() = this == ConnectionPhase.CONNECTING ||
+        this == ConnectionPhase.DISCOVERING ||
+        this == ConnectionPhase.RECONNECTING
+
+private val reconnectablePhases = setOf(ConnectionPhase.ERROR, ConnectionPhase.RECONNECTING)
 
 internal fun signalLabel(rssi: Int): String = when {
     rssi >= -65 -> "Strong signal · ready to connect"

@@ -2,6 +2,7 @@ package dev.epriam.connect.ui
 
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -47,6 +48,17 @@ internal fun ControlDashboard(
 
 @Composable
 private fun RockingContent(state: PriamUiState, actions: PriamActions) {
+    if (!state.isReady && state.canReconnect) {
+        WarningPanel(state.statusMessage) {
+            Button(onClick = actions.reconnect, shape = MaterialTheme.shapes.small) {
+                Text("Reconnect now")
+            }
+            OutlinedButton(onClick = actions.stopRocking, shape = MaterialTheme.shapes.small) {
+                Text("Reconnect and stop")
+            }
+        }
+        return
+    }
     val unconfirmed = state.rockingState as? RockingState.Unconfirmed
     if (unconfirmed == null) {
         RockingSetup(state, actions)

@@ -36,10 +36,16 @@ class RockingUpdateControllerTest {
     @Test
     fun `matching notification confirms pending adjustment`() = runTest {
         val errors = mutableListOf<String>()
+        var confirmed = false
+        var cancelled = false
         val request = RockingRequest(RockingIntensity.HIGH, 3_600, linkLossFlagSet = true)
         val controller = controller(onError = errors::add)
 
-        controller.schedule(request)
+        controller.schedule(
+            request,
+            onConfirmed = { confirmed = true },
+            onCancelled = { cancelled = true },
+        )
         advanceTimeBy(250)
         runCurrent()
         controller.observe(
@@ -57,6 +63,34 @@ class RockingUpdateControllerTest {
 
         assertNull(controller.pendingRequest)
         assertEquals(emptyList<String>(), errors)
+        assertEquals(true, confirmed)
+        assertEquals(false, cancelled)
+    }
+
+    @Test
+    fun `old disconnect policy does not confirm pending adjustment`() = runTest {
+        val errors = mutableListOf<String>()
+        val request = RockingRequest(RockingIntensity.MEDIUM, 1_800, linkLossFlagSet = false)
+        val controller = controller(onError = errors::add)
+
+        controller.schedule(request)
+        advanceTimeBy(250)
+        runCurrent()
+        controller.observe(
+            RockingNotification(
+                intensity = request.intensity,
+                remainingSeconds = request.durationSeconds,
+                configuredSeconds = request.durationSeconds,
+                linkLossFlagSet = true,
+                error = null,
+                raw = byteArrayOf(),
+            ),
+        )
+        advanceTimeBy(3_000)
+        runCurrent()
+
+        assertNull(controller.pendingRequest)
+        assertEquals(listOf("Rocking adjustment was not confirmed by the stroller"), errors)
     }
 
     @Test
@@ -88,14 +122,34 @@ class RockingUpdateControllerTest {
     @Test
     fun `missing notification reports an unconfirmed adjustment`() = runTest {
         val errors = mutableListOf<String>()
+        var cancelled = false
         val controller = controller(onError = errors::add)
 
-        controller.schedule(RockingRequest(RockingIntensity.MEDIUM, 1_800))
+        controller.schedule(
+            RockingRequest(RockingIntensity.MEDIUM, 1_800),
+            onCancelled = { cancelled = true },
+        )
         advanceTimeBy(3_250)
         runCurrent()
 
         assertNull(controller.pendingRequest)
         assertEquals(listOf("Rocking adjustment was not confirmed by the stroller"), errors)
+        assertEquals(true, cancelled)
+    }
+
+    @Test
+    fun `cancelling pending update clears its pending state callback`() = runTest {
+        var cancelled = false
+        val controller = controller()
+
+        controller.schedule(
+            RockingRequest(RockingIntensity.MEDIUM, 1_800),
+            onCancelled = { cancelled = true },
+        )
+        controller.cancel()
+
+        assertNull(controller.pendingRequest)
+        assertEquals(true, cancelled)
     }
 
     private fun kotlinx.coroutines.test.TestScope.controller(

@@ -50,7 +50,7 @@ internal fun BrandMark() {
 @Composable
 internal fun StrollerAppBadge(modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.background(Color(0xFFDDF6EC), CircleShape),
+        modifier = modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Image(
@@ -194,6 +194,7 @@ private fun statusColor(state: PriamUiState): Color = when (state.connectionPhas
     ConnectionPhase.READY, ConnectionPhase.DEMO -> MaterialTheme.colorScheme.primary
     ConnectionPhase.CONNECTING,
     ConnectionPhase.DISCOVERING,
+    ConnectionPhase.RECONNECTING,
     ConnectionPhase.SCANNING,
     -> MaterialTheme.colorScheme.tertiary
     else -> MaterialTheme.colorScheme.error
