@@ -27,7 +27,7 @@ internal class PriamPreferences(context: Context) {
             ?: ThemeMode.SYSTEM,
         themePalette = preferences.getString(KEY_THEME_PALETTE, null)
             ?.let(::parseThemePalette)
-            ?: ThemePalette.MINT,
+            ?: ThemePalette.ROSE_GOLD,
     )
 
     fun acceptSafetyDisclaimer() {

@@ -87,7 +87,7 @@ data class PriamUiState(
     val continueRockingWhenDisconnected: Boolean = false,
     val pendingContinueRockingWhenDisconnected: Boolean? = null,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val themePalette: ThemePalette = ThemePalette.MINT,
+    val themePalette: ThemePalette = ThemePalette.ROSE_GOLD,
     val canReconnect: Boolean = false,
     val isDemo: Boolean = false,
     val diagnostics: List<DiagnosticEvent> = emptyList(),

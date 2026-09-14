@@ -130,7 +130,7 @@ private val AppShapes = Shapes(
 @Composable
 fun EPriamConnectTheme(
     darkTheme: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
-    palette: ThemePalette = ThemePalette.MINT,
+    palette: ThemePalette = ThemePalette.ROSE_GOLD,
     content: @Composable () -> Unit,
 ) {
     val colors = when (palette) {
