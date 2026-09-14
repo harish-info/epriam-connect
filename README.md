@@ -3,6 +3,12 @@
 An unofficial, open-source Android controller for the CYBEX e-Priam stroller.
 
 <p align="center">
+  <img src="docs/screenshots/connection.png" width="30%" alt="Stroller connection screen" />
+  <img src="docs/screenshots/controls.png" width="30%" alt="Rocking controls" />
+  <img src="docs/screenshots/drive-assistance.png" width="30%" alt="Drive assistance modes" />
+</p>
+
+<p align="center">
   <img src="docs/screenshots/widget.png" width="60%" alt="Home screen rocking widget" />
 </p>
 
