@@ -79,6 +79,19 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+        handleWidgetAction(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleWidgetAction(intent)
+    }
+
+    private fun handleWidgetAction(intent: Intent?) {
+        if (intent?.action != ACTION_START_ROCKING_FROM_WIDGET) return
+        intent.action = null
+        window.decorView.post(::requestRockingSession)
     }
 
     private fun requestScan() {
@@ -127,4 +140,9 @@ class MainActivity : ComponentActivity() {
         } else {
             listOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
+
+    companion object {
+        const val ACTION_START_ROCKING_FROM_WIDGET =
+            "dev.epriam.connect.action.START_ROCKING_FROM_WIDGET"
+    }
 }

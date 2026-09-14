@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -105,6 +106,11 @@ internal fun SettingsScreen(
                 onEnabledChange = actions.setContinueRockingWhenDisconnected,
             )
 
+            if (state.isReady) {
+                Spacer(Modifier.height(24.dp))
+                DisconnectButton(state = state, onDisconnect = actions.disconnect)
+            }
+
             if (BuildConfig.DEBUG) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 30.dp))
                 SectionTitle("Developer", "Raw Bluetooth information for troubleshooting.")
@@ -116,10 +122,6 @@ internal fun SettingsScreen(
                 )
             }
 
-            if (state.isReady) {
-                Spacer(Modifier.height(30.dp))
-                DisconnectButton(state = state, onDisconnect = actions.disconnect)
-            }
             Spacer(Modifier.height(30.dp))
         }
     }
@@ -288,6 +290,12 @@ private fun DisconnectButton(state: PriamUiState, onDisconnect: () -> Unit) {
         modifier = Modifier.fillMaxWidth().height(56.dp),
         shape = MaterialTheme.shapes.medium,
     ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_bluetooth_disconnected),
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(8.dp))
         Text(if (state.motionMayBeActive) "Stop rocking before disconnecting" else "Disconnect stroller")
     }
 }
