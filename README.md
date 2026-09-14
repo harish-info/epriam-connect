@@ -8,12 +8,17 @@ An unofficial, open-source Android controller for the CYBEX e-Priam stroller.
   <img src="docs/screenshots/drive-assistance.png" width="30%" alt="Drive assistance modes" />
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/widget.png" width="60%" alt="Home screen rocking widget" />
+</p>
+
 ## Features
 
 - Direct Bluetooth LE discovery and connection
-- Rocking intensity and timers up to three hours
+- Rocking intensity and timers up to two hours
+- Home screen controls with 10, 30, and 60 minute presets
 - Eco, Tour, and experimental Boost drive assistance
-- Battery status, light/dark themes, and offline demo mode
+- Battery status, selectable color palettes, light/dark themes, and offline demo mode
 
 ## Download
 
