@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">ePriam Connect stroller mark</title>
+  <desc id="description">A flat side-profile bassinet stroller with canopy, frame, basket and two wheels.</desc>
+
+  <defs>
+    <clipPath id="canopy-mask">
+      <path d="M33 195C33 93 113 12 213 1l7-1c5 0 8 3 8 8v187H33Z"/>
+    </clipPath>
+  </defs>
+
+  <g id="bassinet">
+    <path
+      fill="#FFB3B7"
+      d="M33 195h377c8 0 13 7 11 15l-12 54c-2 8-8 13-16 13H62c-9 0-15-5-17-14L33 195Z"/>
+    <path
+      fill="#FF979D"
+      d="M45 260h365l-1 5c-2 7-8 12-16 12H62c-8 0-14-5-17-13v-4Z"/>
+  </g>
+
+  <g id="canopy" clip-path="url(#canopy-mask)">
+    <path
+      fill="#FF8087"
+      d="M33 195C33 93 113 12 213 1l7-1c5 0 8 3 8 8v187H33Z"/>
+    <path d="M228 195 45 113" fill="none" stroke="#E6646E" stroke-width="17"/>
+    <path d="M228 195 87 55" fill="none" stroke="#E6646E" stroke-width="17"/>
+    <path d="M228 195 149 18" fill="none" stroke="#E6646E" stroke-width="17"/>
+  </g>
+
+  <path
+    id="basket"
+    fill="#867E88"
+    d="M129 366h162l39 52c8 11 0 27-14 27h-91c-12 0-23-5-32-13l-72-70 8 4Z"/>
+
+  <g id="frame" fill="none" stroke="#EDEBED" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m228 235 137-134c4-4 9-6 15-6h41" stroke-width="18"/>
+    <path d="M228 235 112 349c-5 5-7 11-7 18v34" stroke-width="18"/>
+    <path d="m228 235 91 164" stroke-width="17"/>
+  </g>
+
+  <path d="m126 350 88 86c5 5 12 7 19 7h83" fill="none" stroke="#64505A" stroke-linecap="round" stroke-width="18"/>
+
+  <rect x="406" y="81" width="75" height="34" rx="17" fill="#64505A"/>
+  <circle cx="228" cy="235" r="17" fill="#64505A"/>
+
+  <g id="rear-wheel">
+    <circle cx="106" cy="447" r="57" fill="none" stroke="#64505A" stroke-width="16"/>
+    <circle cx="106" cy="447" r="40.5" fill="none" stroke="#EDEBED" stroke-width="17"/>
+    <circle cx="106" cy="447" r="32" fill="#211A1E"/>
+    <path d="M106 415v32" stroke="#867E88" stroke-width="14"/>
+    <circle cx="106" cy="447" r="17" fill="#64505A"/>
+  </g>
+
+  <g id="front-wheel">
+    <circle cx="350" cy="447" r="57" fill="none" stroke="#64505A" stroke-width="16"/>
+    <circle cx="350" cy="447" r="40.5" fill="none" stroke="#EDEBED" stroke-width="17"/>
+    <circle cx="350" cy="447" r="32" fill="#211A1E"/>
+    <path d="M350 415v32" stroke="#867E88" stroke-width="14"/>
+    <circle cx="350" cy="447" r="17" fill="#64505A"/>
+  </g>
+</svg>
