@@ -1,6 +1,7 @@
 package dev.epriam.connect.widget
 
 import android.Manifest
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -21,7 +22,23 @@ class StartRockingAction : ActionCallback {
         parameters: ActionParameters,
     ) {
         val repository = (context.applicationContext as PriamApplication).repository
-        if (!repository.state.value.isReady || repository.state.value.motionMayBeActive) {
+        if (repository.state.value.motionMayBeActive ||
+            repository.state.value.pendingWidgetStartDurationMinutes != null
+        ) return
+        if (!repository.state.value.safetyAccepted) {
+            openApp(context)
+            return
+        }
+        val bluetoothPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (bluetoothPermissions.any {
+                ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+            } || context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled != true
+        ) {
+            openApp(context, requestStart = true)
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -31,11 +48,25 @@ class StartRockingAction : ActionCallback {
             openApp(context, requestStart = true)
             return
         }
-        repository.startRocking()
         ContextCompat.startForegroundService(
             context,
             Intent(context, RockingSessionService::class.java)
-                .setAction(RockingSessionService.ACTION_START),
+                .setAction(RockingSessionService.ACTION_WIDGET_START),
+        )
+        PriamWidget().update(context, glanceId)
+    }
+}
+
+class StopRockingAction : ActionCallback {
+    override suspend fun onAction(
+        context: Context,
+        glanceId: GlanceId,
+        parameters: ActionParameters,
+    ) {
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, RockingSessionService::class.java)
+                .setAction(RockingSessionService.ACTION_WIDGET_STOP),
         )
         PriamWidget().update(context, glanceId)
     }

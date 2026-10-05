@@ -19,6 +19,7 @@ internal data class PriamWidgetPresentation(
     val primaryEnabled: Boolean,
     val selectedDurationMinutes: Int,
     val durationEnabled: Boolean,
+    val batteryPercent: Int?,
     val palette: ThemePalette,
     val themeMode: ThemeMode,
 )
@@ -26,21 +27,17 @@ internal data class PriamWidgetPresentation(
 internal fun PriamUiState.toWidgetPresentation(): PriamWidgetPresentation {
     val rocking = rockingState
     val motionDetail = when (rocking) {
-        is RockingState.Active -> {
-            val time = formatWidgetRemaining(rocking.remainingSeconds)
-            if (connectionPhase == ConnectionPhase.RECONNECTING) "Connection lost · $time" else time
-        }
-        is RockingState.Starting -> "Preparing ${rocking.intensity.displayName.lowercase()} intensity"
-        is RockingState.Stopping -> "Waiting for stroller confirmation"
-        is RockingState.Unconfirmed -> "Status unconfirmed · check stroller"
+        is RockingState.Active -> formatWidgetRemaining(rocking.remainingSeconds)
+        is RockingState.Starting, is RockingState.Stopping -> "Please wait"
+        is RockingState.Unconfirmed -> "Status uncertain"
         else -> null
     }
 
     if (motionMayBeActive) {
         val title = when (rocking) {
-            is RockingState.Active -> "Rocking · ${rocking.intensity.displayName}"
-            is RockingState.Starting -> "Starting rocking"
-            is RockingState.Stopping -> "Stopping rocking"
+            is RockingState.Active -> if (connectionPhase == ConnectionPhase.RECONNECTING) "Link lost" else "Rocking"
+            is RockingState.Starting -> "Starting"
+            is RockingState.Stopping -> "Stopping"
             else -> "Check stroller"
         }
         return PriamWidgetPresentation(
@@ -51,34 +48,52 @@ internal fun PriamUiState.toWidgetPresentation(): PriamWidgetPresentation {
             primaryEnabled = true,
             selectedDurationMinutes = selectedDurationMinutes,
             durationEnabled = rocking is RockingState.Active,
+            batteryPercent = batteryPercent.takeIf { isReady },
+            palette = themePalette,
+            themeMode = themeMode,
+        )
+    }
+
+    pendingWidgetStartDurationMinutes?.let { minutes ->
+        return PriamWidgetPresentation(
+            title = "Connecting",
+            detail = "Will rock $minutes min",
+            actionLabel = "Cancel start",
+            action = WidgetAction.STOP_ROCKING,
+            primaryEnabled = true,
+            selectedDurationMinutes = minutes,
+            durationEnabled = false,
+            batteryPercent = null,
             palette = themePalette,
             themeMode = themeMode,
         )
     }
 
     val title = when (connectionPhase) {
-        ConnectionPhase.READY, ConnectionPhase.DEMO -> connectedDeviceName ?: "Stroller connected"
-        ConnectionPhase.SCANNING -> "Looking for stroller"
+        ConnectionPhase.READY, ConnectionPhase.DEMO -> connectedDeviceName ?: "Connected"
+        ConnectionPhase.SCANNING -> "Scanning"
         ConnectionPhase.CONNECTING, ConnectionPhase.DISCOVERING -> "Connecting"
         ConnectionPhase.RECONNECTING -> "Reconnecting"
-        ConnectionPhase.ERROR -> "Connection needs attention"
+        ConnectionPhase.ERROR -> "Can't connect"
         ConnectionPhase.IDLE -> "Not connected"
     }
     val detail = when (connectionPhase) {
-        ConnectionPhase.READY, ConnectionPhase.DEMO -> batteryPercent?.let { "Battery $it%" } ?: "Ready to rock"
-        ConnectionPhase.SCANNING -> "Keep the stroller nearby"
-        ConnectionPhase.CONNECTING, ConnectionPhase.DISCOVERING, ConnectionPhase.RECONNECTING -> "Keep the stroller nearby"
-        ConnectionPhase.ERROR -> "Open the app to retry"
-        ConnectionPhase.IDLE -> "Open the app to connect"
+        ConnectionPhase.READY, ConnectionPhase.DEMO -> "Ready to rock"
+        ConnectionPhase.SCANNING -> "Stroller nearby?"
+        ConnectionPhase.CONNECTING, ConnectionPhase.DISCOVERING, ConnectionPhase.RECONNECTING -> "Stroller nearby?"
+        ConnectionPhase.ERROR -> "Tap to retry"
+        ConnectionPhase.IDLE -> if (safetyAccepted) "Tap to start" else "Open app to set up"
     }
     return PriamWidgetPresentation(
         title = title,
         detail = detail,
-        actionLabel = "Start rocking",
+        actionLabel = if (!safetyAccepted) "Set up app"
+        else if (isReady) "Start rocking" else "Connect & start",
         action = WidgetAction.START_ROCKING,
-        primaryEnabled = isReady,
+        primaryEnabled = safetyAccepted,
         selectedDurationMinutes = selectedDurationMinutes,
         durationEnabled = true,
+        batteryPercent = batteryPercent.takeIf { isReady },
         palette = themePalette,
         themeMode = themeMode,
     )

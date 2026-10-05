@@ -5,6 +5,7 @@ import dev.epriam.connect.protocol.RockingIntensity
 import dev.epriam.connect.protocol.RockingNotification
 import dev.epriam.connect.protocol.RockingRequest
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -54,6 +55,48 @@ class RockingSessionControllerTest {
             ),
             writes.single(),
         )
+    }
+
+    @Test
+    fun `widget start uses the duration and intensity captured at tap time`() = runTest {
+        var state = readyState().copy(selectedDurationMinutes = 10)
+        val writes = mutableListOf<ByteArray>()
+        val controller = controller(state = { state }, updateState = { state = it }, writes = writes)
+
+        controller.start(
+            RockingStartRequest(
+                intensity = RockingIntensity.MEDIUM,
+                durationMinutes = 30,
+                continueWhenDisconnected = false,
+            ),
+        )
+        runCurrent()
+
+        assertArrayEquals(
+            PriamProtocol.encodeRocking(
+                RockingRequest(RockingIntensity.MEDIUM, 1_800, linkLossFlagSet = false),
+            ),
+            writes.single(),
+        )
+    }
+
+    @Test
+    fun `stalled start write becomes unconfirmed instead of running forever`() = runTest {
+        var state = readyState()
+        val controller = RockingSessionController(
+            scope = this,
+            currentState = { state },
+            updateState = { transform -> state = transform(state) },
+            writeRocking = { awaitCancellation() },
+            onDiagnostic = {},
+            onError = {},
+        )
+
+        controller.start()
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertTrue(state.rockingState is RockingState.Unconfirmed)
     }
 
     @Test

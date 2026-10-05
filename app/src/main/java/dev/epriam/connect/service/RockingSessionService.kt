@@ -13,6 +13,7 @@ import androidx.core.app.ServiceCompat
 import dev.epriam.connect.MainActivity
 import dev.epriam.connect.PriamApplication
 import dev.epriam.connect.R
+import dev.epriam.connect.domain.ConnectionPhase
 import dev.epriam.connect.domain.PriamUiState
 import dev.epriam.connect.domain.RockingState
 import dev.epriam.connect.domain.ThemePalette
@@ -28,6 +29,9 @@ import kotlinx.coroutines.launch
 class RockingSessionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var observer: Job? = null
+    private var widgetSessionOwned = false
+    private var disconnectAfterWidgetStop = false
+    private var closingWidgetSession = false
 
     override fun onCreate() {
         super.onCreate()
@@ -36,22 +40,76 @@ class RockingSessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val repository = (application as PriamApplication).repository
-        if (intent?.action == ACTION_STOP) {
-            if (shouldStopEverything(repository.state.value)) {
-                repository.stopEverything()
-                stopSelf(startId)
-                return START_NOT_STICKY
-            }
-            repository.stopRocking()
-        }
         startInForeground(
-            content = "Starting…",
+            content = if (intent?.action == ACTION_WIDGET_START && !repository.state.value.isReady) {
+                "Connecting to stroller…"
+            } else {
+                "Starting…"
+            },
             themePalette = repository.state.value.themePalette,
             reconnecting = false,
+            pendingStart = intent?.action == ACTION_WIDGET_START && !repository.state.value.isReady,
         )
+        when (intent?.action) {
+            ACTION_WIDGET_START -> {
+                if (!repository.startRockingFromWidget()) {
+                    val current = repository.state.value
+                    if (current.pendingWidgetStartDurationMinutes == null && !current.motionMayBeActive) {
+                        stopSelf(startId)
+                        return START_NOT_STICKY
+                    }
+                } else {
+                    widgetSessionOwned = true
+                    closingWidgetSession = false
+                }
+            }
+            ACTION_WIDGET_STOP, ACTION_STOP -> {
+                if (repository.state.value.pendingWidgetStartDurationMinutes != null) {
+                    repository.cancelWidgetStart()
+                    stopSelf(startId)
+                    return START_NOT_STICKY
+                }
+                if (shouldStopEverything(repository.state.value)) {
+                    repository.stopEverything()
+                    stopSelf(startId)
+                    return START_NOT_STICKY
+                }
+                if (intent.action == ACTION_WIDGET_STOP) {
+                    disconnectAfterWidgetStop = true
+                    if (repository.state.value.motionMayBeActive) repository.stopRocking()
+                    else {
+                        closingWidgetSession = true
+                        repository.disconnect()
+                    }
+                } else {
+                    repository.stopRocking()
+                }
+            }
+            ACTION_START -> {
+                widgetSessionOwned = false
+                disconnectAfterWidgetStop = false
+            }
+        }
         observer?.cancel()
         observer = scope.launch {
             repository.state.collectLatest { state ->
+                if (closingWidgetSession) {
+                    if (state.connectionPhase == ConnectionPhase.IDLE || state.connectionPhase == ConnectionPhase.ERROR) {
+                        stopSelf()
+                    } else {
+                        startInForeground("Disconnecting…", state.themePalette, reconnecting = false)
+                    }
+                    return@collectLatest
+                }
+                if (state.pendingWidgetStartDurationMinutes != null) {
+                    startInForeground(
+                        "Connecting to start ${state.pendingWidgetStartDurationMinutes} min rocking…",
+                        state.themePalette,
+                        reconnecting = false,
+                        pendingStart = true,
+                    )
+                    return@collectLatest
+                }
                 if (state.reconnectSecondsRemaining != null && !state.isReady) {
                     startInForeground(
                         if (state.rockingState is RockingState.Stopping) {
@@ -77,7 +135,16 @@ class RockingSessionService : Service() {
                         state.themePalette,
                         reconnecting = false,
                     )
-                    else -> stopSelf()
+                    else -> {
+                        if ((widgetSessionOwned || disconnectAfterWidgetStop) &&
+                            state.connectionPhase != ConnectionPhase.ERROR
+                        ) {
+                            closingWidgetSession = true
+                            repository.disconnect()
+                        } else {
+                            stopSelf()
+                        }
+                    }
                 }
             }
         }
@@ -88,6 +155,7 @@ class RockingSessionService : Service() {
         content: String,
         themePalette: ThemePalette,
         reconnecting: Boolean,
+        pendingStart: Boolean = false,
     ) {
         val openIntent = PendingIntent.getActivity(
             this,
@@ -111,7 +179,13 @@ class RockingSessionService : Service() {
             .setOnlyAlertOnce(true)
             .addAction(
                 0,
-                getString(if (reconnecting) R.string.stop_reconnecting else R.string.stop_rocking),
+                getString(
+                    when {
+                        pendingStart -> R.string.cancel_start
+                        reconnecting -> R.string.stop_reconnecting
+                        else -> R.string.stop_rocking
+                    },
+                ),
                 stopIntent,
             )
             .build()
@@ -147,10 +221,13 @@ class RockingSessionService : Service() {
     companion object {
         const val ACTION_START = "dev.epriam.connect.action.START_ROCKING_SESSION"
         const val ACTION_STOP = "dev.epriam.connect.action.STOP_ROCKING"
+        const val ACTION_WIDGET_START = "dev.epriam.connect.action.WIDGET_START_ROCKING"
+        const val ACTION_WIDGET_STOP = "dev.epriam.connect.action.WIDGET_STOP_ROCKING"
         private const val CHANNEL_ID = "rocking_session"
         private const val NOTIFICATION_ID = 1933
     }
 }
 
 internal fun shouldStopEverything(state: PriamUiState): Boolean =
-    state.reconnectSecondsRemaining != null && !state.isReady
+    state.pendingWidgetStartDurationMinutes != null ||
+        (state.reconnectSecondsRemaining != null && !state.isReady)

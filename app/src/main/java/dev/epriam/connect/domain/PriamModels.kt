@@ -91,6 +91,7 @@ data class PriamUiState(
     val themePalette: ThemePalette = ThemePalette.ROSE_GOLD,
     val canReconnect: Boolean = false,
     val reconnectSecondsRemaining: Int? = null,
+    val pendingWidgetStartDurationMinutes: Int? = null,
     val isDemo: Boolean = false,
     val diagnostics: List<DiagnosticEvent> = emptyList(),
 ) {
