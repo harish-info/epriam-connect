@@ -37,7 +37,7 @@ data class DeviceCandidate(
 )
 
 internal fun List<DeviceCandidate>.updatedWith(candidate: DeviceCandidate): List<DeviceCandidate> =
-    (filterNot { it.identityKey == candidate.identityKey } + candidate)
+    (filterNot { it.id == candidate.id || it.identityKey == candidate.identityKey } + candidate)
         .sortedByDescending(DeviceCandidate::rssi)
 
 internal fun DeviceCandidate.isFresh(
@@ -77,6 +77,7 @@ data class PriamUiState(
     val statusMessage: String = "Not connected",
     val candidates: List<DeviceCandidate> = emptyList(),
     val connectedDeviceName: String? = null,
+    val connectingDeviceId: String? = null,
     val batteryPercent: Int? = null,
     val batteryRawValue: Int? = null,
     val batteryLeds: Int? = null,

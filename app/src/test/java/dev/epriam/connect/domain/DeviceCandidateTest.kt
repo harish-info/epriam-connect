@@ -27,6 +27,14 @@ class DeviceCandidateTest {
     }
 
     @Test
+    fun `changing advertisement data at one address updates one candidate`() {
+        val first = candidate(address = "AA:AA:AA:AA:AE:29", rssi = -68, identity = "cybex:first")
+        val updated = candidate(address = "AA:AA:AA:AA:AE:29", rssi = -60, identity = "cybex:second")
+
+        assertEquals(listOf(updated), listOf(first).updatedWith(updated))
+    }
+
+    @Test
     fun `candidate freshness expires after the allowed age`() {
         val candidate = candidate(
             address = "AA:AA:AA:AA:AE:29",

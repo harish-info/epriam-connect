@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -56,7 +57,9 @@ internal fun ConnectionScreen(
         "Keep the e-Priam powered on and nearby.",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    if (state.canReconnect && state.connectionPhase in reconnectablePhases) {
+    if (state.reconnectSecondsRemaining != null ||
+        (state.canReconnect && state.connectionPhase in reconnectablePhases)
+    ) {
         Spacer(Modifier.height(20.dp))
         ConnectionRecoveryPanel(
             state = state,
@@ -111,7 +114,7 @@ private fun CandidateList(state: PriamUiState, onConnect: (DeviceCandidate) -> U
     state.candidates.forEachIndexed { index, candidate ->
         CandidateCard(
             candidate = candidate,
-            connecting = state.connectionPhase.isConnecting && state.connectedDeviceName == candidate.name,
+            connecting = state.connectionPhase.isConnecting && state.connectingDeviceId == candidate.id,
             connectionInProgress = state.connectionPhase.isConnecting,
             statusMessage = state.statusMessage,
             onConnect = { onConnect(candidate) },
