@@ -50,13 +50,13 @@ internal fun BrandMark() {
 @Composable
 internal fun StrollerAppBadge(modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+        modifier = modifier.background(Color(0xFF211A1E), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Image(
-            painter = painterResource(R.drawable.stroller_hero_light),
+            painter = painterResource(R.drawable.ic_launcher_foreground),
             contentDescription = null,
-            modifier = Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 6.dp),
+            modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit,
         )
     }
