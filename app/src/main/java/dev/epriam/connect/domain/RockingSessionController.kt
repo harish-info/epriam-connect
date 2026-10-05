@@ -169,13 +169,15 @@ internal class RockingSessionController(
                     }
                 }
                 .onFailure { error ->
-                    onError("Rocking write failed: ${error.message}")
-                    updateState { state ->
-                        state.copy(
-                            rockingState = RockingState.Unconfirmed(
-                                "Rocking write was not confirmed; physically verify the stroller is still",
-                            ),
-                        )
+                    if (currentState().rockingState is RockingState.Starting) {
+                        onError("Rocking write failed: ${error.message}")
+                        updateState { state ->
+                            if (state.rockingState is RockingState.Starting) state.copy(
+                                rockingState = RockingState.Unconfirmed(
+                                    "Rocking write was not confirmed; physically verify the stroller is still",
+                                ),
+                            ) else state
+                        }
                     }
                 }
         }
@@ -201,13 +203,19 @@ internal class RockingSessionController(
                     }
                 }
                 .onFailure { error ->
-                    onError("Stop write failed: ${error.message}")
-                    updateState { state ->
-                        state.copy(
-                            rockingState = RockingState.Unconfirmed(
-                                "Stop was not confirmed; physically verify the stroller stopped",
-                            ),
-                        )
+                    if (currentState().rockingState is RockingState.Stopping ||
+                        currentState().rockingState is RockingState.Active
+                    ) {
+                        onError("Stop write failed: ${error.message}")
+                        updateState { state ->
+                            if (state.rockingState is RockingState.Stopping ||
+                                state.rockingState is RockingState.Active
+                            ) state.copy(
+                                rockingState = RockingState.Unconfirmed(
+                                    "Stop was not confirmed; physically verify the stroller stopped",
+                                ),
+                            ) else state
+                        }
                     }
                 }
         }

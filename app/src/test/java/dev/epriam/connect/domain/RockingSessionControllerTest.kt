@@ -100,6 +100,57 @@ class RockingSessionControllerTest {
     }
 
     @Test
+    fun `late start failure does not undo a stopped notification`() = runTest {
+        var state = readyState()
+        val errors = mutableListOf<String>()
+        val controller = RockingSessionController(
+            scope = this,
+            currentState = { state },
+            updateState = { transform -> state = transform(state) },
+            writeRocking = { awaitCancellation() },
+            onDiagnostic = {},
+            onError = errors::add,
+        )
+
+        controller.start()
+        runCurrent()
+        controller.observe(stoppedNotification())
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertEquals(RockingState.Off, state.rockingState)
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
+    fun `late stop failure does not undo a stopped notification`() = runTest {
+        var state = readyState().copy(rockingState = RockingState.Active(
+            RockingIntensity.HIGH,
+            remainingSeconds = 60,
+            configuredSeconds = 60,
+            linkLossFlagSet = false,
+        ))
+        val errors = mutableListOf<String>()
+        val controller = RockingSessionController(
+            scope = this,
+            currentState = { state },
+            updateState = { transform -> state = transform(state) },
+            writeRocking = { awaitCancellation() },
+            onDiagnostic = {},
+            onError = errors::add,
+        )
+
+        controller.stop()
+        runCurrent()
+        controller.observe(stoppedNotification())
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertEquals(RockingState.Off, state.rockingState)
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
     fun `disconnect policy change updates an active session`() = runTest {
         var state = readyState().copy(
             rockingState = RockingState.Active(
@@ -193,4 +244,13 @@ class RockingSessionControllerTest {
             error = null,
             raw = byteArrayOf(),
         )
+
+    private fun stoppedNotification() = RockingNotification(
+        intensity = null,
+        remainingSeconds = 0,
+        configuredSeconds = 0,
+        linkLossFlagSet = false,
+        error = null,
+        raw = byteArrayOf(),
+    )
 }
