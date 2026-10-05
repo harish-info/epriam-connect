@@ -44,11 +44,9 @@ internal fun ConnectionRecoveryPanel(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    if (state.connectionPhase == ConnectionPhase.RECONNECTING) {
-                        "Connection lost"
-                    } else {
-                        "Couldn’t connect"
-                    },
+                    if (state.reconnectSecondsRemaining != null) "Reconnecting to stroller"
+                    else if (state.connectionPhase == ConnectionPhase.RECONNECTING) "Connection lost"
+                    else "Couldn’t connect",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
@@ -67,7 +65,7 @@ internal fun ConnectionRecoveryPanel(
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = MaterialTheme.shapes.medium,
             ) {
-                Text("Try again now")
+                Text(if (state.reconnectSecondsRemaining != null) "Restart scan now" else "Try again now")
             }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(

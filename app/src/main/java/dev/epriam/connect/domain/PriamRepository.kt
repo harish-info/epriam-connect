@@ -3,12 +3,15 @@ package dev.epriam.connect.domain
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
+import dev.epriam.connect.BuildConfig
 import dev.epriam.connect.ble.PriamBleListener
 import dev.epriam.connect.ble.PriamBleManager
 import dev.epriam.connect.ble.PriamScanner
 import dev.epriam.connect.protocol.DriveMode
 import dev.epriam.connect.protocol.PriamProtocol
 import dev.epriam.connect.protocol.RockingIntensity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class PriamRepository(context: Context) {
     private val applicationContext = context.applicationContext
@@ -75,7 +79,7 @@ class PriamRepository(context: Context) {
         if (!_state.value.safetyAccepted) return
         leaveDemo()
         if (!scanner.isBluetoothEnabled) {
-            if (reconnectIdentityKey == null) {
+            if (!automaticReconnectActive && reconnectIdentityKey == null) {
                 _state.update {
                     it.copy(connectionPhase = ConnectionPhase.ERROR, statusMessage = "Turn on Bluetooth to scan")
                 }
@@ -95,6 +99,7 @@ class PriamRepository(context: Context) {
         _state.update {
             it.copy(
                 connectionPhase = scanPhase,
+                connectingDeviceId = null,
                 statusMessage = if (reconnectIdentityKey == null) {
                     "Looking for a Cybex stroller…"
                 } else {
@@ -109,7 +114,13 @@ class PriamRepository(context: Context) {
                 onCandidate = onCandidate@ { candidate ->
                     if (_state.value.connectionPhase != scanPhase) return@onCandidate
                     val isNewCandidate = _state.value.candidates.none {
-                        it.identityKey == candidate.identityKey
+                        it.id == candidate.id || it.identityKey == candidate.identityKey
+                    }
+                    if (isNewCandidate) {
+                        addDiagnostic("Scan found ${candidate.name} (${candidate.addressHint})")
+                        if (BuildConfig.DEBUG) {
+                            Log.d("PriamScanIdentity", "${candidate.addressHint}: ${candidate.identityKey}")
+                        }
                     }
                     _state.update { current ->
                         current.copy(
@@ -117,7 +128,10 @@ class PriamRepository(context: Context) {
                             statusMessage = "Stroller found",
                         )
                     }
-                    if (reconnectIdentityKey == candidate.identityKey) {
+                    if (reconnectIdentityKey == candidate.identityKey ||
+                        (automaticReconnectActive && reconnectIdentityKey == null &&
+                            candidate.id == reconnectTarget?.id)
+                    ) {
                         if (reconnectCandidateClaimed) return@onCandidate
                         reconnectCandidateClaimed = true
                         addDiagnostic("Fresh stroller advertisement found; reconnecting directly")
@@ -128,7 +142,7 @@ class PriamRepository(context: Context) {
                     }
                 },
                 onError = { message ->
-                    if (reconnectIdentityKey == null) fail(message) else retryReconnect(message)
+                    if (automaticReconnectActive || reconnectIdentityKey != null) retryReconnect(message) else fail(message)
                 },
             )
             scanTimeout = scope.launch {
@@ -144,7 +158,9 @@ class PriamRepository(context: Context) {
                     retryReconnect("Couldn’t find the stroller.")
                 } else if (onlyCandidate != null) {
                     addDiagnostic("One stroller found at scan completion; connecting automatically")
-                    connect(onlyCandidate)
+                    connectDiscoveredCandidate(onlyCandidate)
+                } else if (automaticReconnectActive) {
+                    retryReconnect("Couldn’t identify one stroller yet.")
                 } else {
                     _state.update { latest ->
                         if (latest.connectionPhase != ConnectionPhase.SCANNING) latest else latest.copy(
@@ -174,6 +190,15 @@ class PriamRepository(context: Context) {
         connectFreshCandidate(candidate)
     }
 
+    private fun connectDiscoveredCandidate(candidate: DeviceCandidate) {
+        if (automaticReconnectActive) {
+            beginAutomaticReconnect(candidate, resetAttempts = false)
+            connectFreshCandidate(candidate)
+        } else {
+            connect(candidate)
+        }
+    }
+
     @SuppressLint("MissingPermission")
     private fun connectFreshCandidate(candidate: DeviceCandidate) {
         scanner.stop()
@@ -199,6 +224,7 @@ class PriamRepository(context: Context) {
             it.copy(
                 connectionPhase = if (recovery) ConnectionPhase.RECONNECTING else ConnectionPhase.CONNECTING,
                 connectedDeviceName = candidate.name,
+                connectingDeviceId = candidate.id,
                 statusMessage = if (recovery) {
                     "Reconnecting to ${candidate.name}…"
                 } else {
@@ -209,7 +235,7 @@ class PriamRepository(context: Context) {
         }
         addDiagnostic("${if (recovery) "Reconnecting" else "Connecting"} to ${candidate.name} (${candidate.addressHint})")
         connectionJob = scope.launch {
-            previousManager?.disconnectAndClose()
+            closeManager(previousManager)
             if (generation != connectionGeneration) return@launch
 
             val connectionManager = createManager(generation)
@@ -235,7 +261,7 @@ class PriamRepository(context: Context) {
             return
         }
         beginAutomaticReconnect(candidate, resetAttempts = true)
-        startScan(reconnectIdentityKey = candidate.identityKey)
+        resetAndScan()
     }
 
     fun onBluetoothStateChanged(enabled: Boolean) {
@@ -243,7 +269,7 @@ class PriamRepository(context: Context) {
         if (enabled) {
             addDiagnostic("Bluetooth is on; resuming automatic reconnect")
             reconnectRetryJob?.cancel()
-            startScan(reconnectIdentityKey = reconnectTarget?.identityKey)
+            resetAndScan()
         } else {
             scanner.stop()
             scanTimeout?.cancel()
@@ -279,7 +305,7 @@ class PriamRepository(context: Context) {
         connectionJob?.cancel()
         connectionGeneration++
         scope.launch {
-            managerToClose?.disconnectAndClose()
+            closeManager(managerToClose)
             _state.update {
                 it.copy(
                     connectionPhase = ConnectionPhase.IDLE,
@@ -309,7 +335,7 @@ class PriamRepository(context: Context) {
         connectionReady = false
         connectionGeneration++
         connectionJob?.cancel()
-        scope.launch { managerToClose?.disconnectAndClose() }
+        scope.launch { closeManager(managerToClose) }
         _state.update {
             it.copy(
                 connectionPhase = ConnectionPhase.DEMO,
@@ -495,7 +521,7 @@ class PriamRepository(context: Context) {
         addDiagnostic("${if (wasReady) "Connection lost; auto-reconnect active" else "Connection attempt failed"}, reason $reason")
         if (wasReady) {
             lastCandidate?.let { beginAutomaticReconnect(it, resetAttempts = true) }
-            startScan(reconnectIdentityKey = reconnectTarget?.identityKey)
+            if (automaticReconnectActive) resetAndScan() else startScan()
         }
     }
 
@@ -586,10 +612,11 @@ class PriamRepository(context: Context) {
             val onlyCandidate = current.candidates.singleOrNull()
             if (
                 current.connectionPhase == ConnectionPhase.SCANNING &&
-                onlyCandidate?.identityKey == firstCandidate.identityKey
+                (onlyCandidate?.id == firstCandidate.id ||
+                    onlyCandidate?.identityKey == firstCandidate.identityKey)
             ) {
                 addDiagnostic("One stroller found; connecting automatically")
-                connect(onlyCandidate)
+                connectDiscoveredCandidate(onlyCandidate)
             }
         }
     }
@@ -648,10 +675,79 @@ class PriamRepository(context: Context) {
         reconnectRetryJob = scope.launch {
             delay(delayMillis)
             if (scanner.isBluetoothEnabled) {
-                startScan(reconnectIdentityKey = reconnectTarget?.identityKey)
+                resetAndScan()
             } else {
                 retryReconnect("Bluetooth is off.")
             }
+        }
+    }
+
+    private fun resetAndScan() {
+        scanner.stop()
+        scanTimeout?.cancel()
+        scanTimeout = null
+        autoConnectJob?.cancel()
+        autoConnectJob = null
+        reconnectRetryJob?.cancel()
+        reconnectRetryJob = null
+        rockingSession.cancelPendingWork()
+
+        val managerToClose = manager
+        val previousConnectionJob = connectionJob
+        manager = null
+        connectionReady = false
+        connectionJob?.cancel()
+        connectionJob = null
+        val generation = ++connectionGeneration
+        _state.update {
+            it.copy(
+                connectionPhase = ConnectionPhase.RECONNECTING,
+                statusMessage = "Resetting Bluetooth before scanning…",
+                candidates = emptyList(),
+                connectedDeviceName = null,
+                connectingDeviceId = null,
+                batteryPercent = null,
+                batteryRawValue = null,
+                batteryLeds = null,
+                driveState = DriveState.Unknown,
+                canReconnect = true,
+            )
+        }
+        addDiagnostic("Resetting Bluetooth connection before a fresh scan")
+        scope.launch {
+            if (previousConnectionJob != null &&
+                withTimeoutOrNull(GATT_CLOSE_TIMEOUT_MILLIS) {
+                    previousConnectionJob.join()
+                    true
+                } != true
+            ) {
+                if (generation == connectionGeneration) {
+                    stopBluetoothWork("Bluetooth reset timed out. Scan again when you’re ready.")
+                }
+                return@launch
+            }
+            closeManager(managerToClose)
+            if (generation == connectionGeneration && automaticReconnectActive) {
+                startScan(reconnectIdentityKey = null)
+            }
+        }
+    }
+
+    private suspend fun closeManager(managerToClose: PriamBleManager?) {
+        if (managerToClose == null) return
+        try {
+            if (withTimeoutOrNull(GATT_CLOSE_TIMEOUT_MILLIS) {
+                    managerToClose.disconnectAndClose()
+                    true
+                } != true
+            ) {
+                addDiagnostic("Old Bluetooth connection close timed out")
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            managerToClose.close()
+            addDiagnostic("Old Bluetooth connection close failed: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -689,6 +785,7 @@ class PriamRepository(context: Context) {
                 statusMessage = message,
                 candidates = emptyList(),
                 connectedDeviceName = null,
+                connectingDeviceId = null,
                 batteryPercent = null,
                 batteryRawValue = null,
                 batteryLeds = null,
@@ -700,7 +797,7 @@ class PriamRepository(context: Context) {
             )
         }
         addDiagnostic("All Bluetooth work stopped")
-        scope.launch { managerToClose?.disconnectAndClose() }
+        scope.launch { closeManager(managerToClose) }
     }
 
     private fun applyDisconnectPolicyPreference(enabled: Boolean) {
@@ -724,6 +821,7 @@ class PriamRepository(context: Context) {
     }
 
     private fun addDiagnostic(message: String) {
+        if (BuildConfig.DEBUG) Log.d("PriamRepository", message)
         _state.update {
             it.copy(
                 diagnostics = (listOf(DiagnosticEvent(System.currentTimeMillis(), message)) + it.diagnostics)
@@ -736,6 +834,7 @@ class PriamRepository(context: Context) {
         private const val SCAN_DURATION_MILLIS = 12_000L
         private const val AUTO_CONNECT_DELAY_MILLIS = 1_200L
         private const val CANDIDATE_FRESHNESS_MILLIS = 30_000L
+        private const val GATT_CLOSE_TIMEOUT_MILLIS = 2_000L
         internal const val RECONNECT_TIMEOUT_MILLIS = 3 * 60_000L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
     }
