@@ -5,6 +5,7 @@ import dev.epriam.connect.protocol.RockingIntensity
 import dev.epriam.connect.protocol.RockingNotification
 import dev.epriam.connect.protocol.RockingRequest
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -54,6 +55,99 @@ class RockingSessionControllerTest {
             ),
             writes.single(),
         )
+    }
+
+    @Test
+    fun `widget start uses the duration and intensity captured at tap time`() = runTest {
+        var state = readyState().copy(selectedDurationMinutes = 10)
+        val writes = mutableListOf<ByteArray>()
+        val controller = controller(state = { state }, updateState = { state = it }, writes = writes)
+
+        controller.start(
+            RockingStartRequest(
+                intensity = RockingIntensity.MEDIUM,
+                durationMinutes = 30,
+                continueWhenDisconnected = false,
+            ),
+        )
+        runCurrent()
+
+        assertArrayEquals(
+            PriamProtocol.encodeRocking(
+                RockingRequest(RockingIntensity.MEDIUM, 1_800, linkLossFlagSet = false),
+            ),
+            writes.single(),
+        )
+    }
+
+    @Test
+    fun `stalled start write becomes unconfirmed instead of running forever`() = runTest {
+        var state = readyState()
+        val controller = RockingSessionController(
+            scope = this,
+            currentState = { state },
+            updateState = { transform -> state = transform(state) },
+            writeRocking = { awaitCancellation() },
+            onDiagnostic = {},
+            onError = {},
+        )
+
+        controller.start()
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertTrue(state.rockingState is RockingState.Unconfirmed)
+    }
+
+    @Test
+    fun `late start failure does not undo a stopped notification`() = runTest {
+        var state = readyState()
+        val errors = mutableListOf<String>()
+        val controller = RockingSessionController(
+            scope = this,
+            currentState = { state },
+            updateState = { transform -> state = transform(state) },
+            writeRocking = { awaitCancellation() },
+            onDiagnostic = {},
+            onError = errors::add,
+        )
+
+        controller.start()
+        runCurrent()
+        controller.observe(stoppedNotification())
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertEquals(RockingState.Off, state.rockingState)
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
+    fun `late stop failure does not undo a stopped notification`() = runTest {
+        var state = readyState().copy(rockingState = RockingState.Active(
+            RockingIntensity.HIGH,
+            remainingSeconds = 60,
+            configuredSeconds = 60,
+            linkLossFlagSet = false,
+        ))
+        val errors = mutableListOf<String>()
+        val controller = RockingSessionController(
+            scope = this,
+            currentState = { state },
+            updateState = { transform -> state = transform(state) },
+            writeRocking = { awaitCancellation() },
+            onDiagnostic = {},
+            onError = errors::add,
+        )
+
+        controller.stop()
+        runCurrent()
+        controller.observe(stoppedNotification())
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertEquals(RockingState.Off, state.rockingState)
+        assertTrue(errors.isEmpty())
     }
 
     @Test
@@ -150,4 +244,13 @@ class RockingSessionControllerTest {
             error = null,
             raw = byteArrayOf(),
         )
+
+    private fun stoppedNotification() = RockingNotification(
+        intensity = null,
+        remainingSeconds = 0,
+        configuredSeconds = 0,
+        linkLossFlagSet = false,
+        error = null,
+        raw = byteArrayOf(),
+    )
 }

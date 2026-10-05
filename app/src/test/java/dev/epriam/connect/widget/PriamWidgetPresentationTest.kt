@@ -11,12 +11,13 @@ import org.junit.Test
 
 class PriamWidgetPresentationTest {
     @Test
-    fun disconnectedStateDisablesStartButKeepsTimerPresetsAvailable() {
+    fun firstRunOpensSetupButKeepsTimerPresetsAvailable() {
         val presentation = PriamUiState().toWidgetPresentation()
 
         assertEquals("Not connected", presentation.title)
-        assertEquals("Open the app to connect", presentation.detail)
-        assertEquals("Start rocking", presentation.actionLabel)
+        assertEquals("Open app to set up", presentation.detail)
+        assertEquals("Set up app", presentation.actionLabel)
+        assertEquals(null, presentation.batteryPercent)
         assertEquals(WidgetAction.START_ROCKING, presentation.action)
         assertEquals(false, presentation.primaryEnabled)
         assertEquals(30, presentation.selectedDurationMinutes)
@@ -25,8 +26,33 @@ class PriamWidgetPresentationTest {
     }
 
     @Test
+    fun configuredDisconnectedStateCanConnectAndStartFromWidget() {
+        val presentation = PriamUiState(safetyAccepted = true).toWidgetPresentation()
+
+        assertEquals("Tap to start", presentation.detail)
+        assertEquals("Connect & start", presentation.actionLabel)
+        assertEquals(true, presentation.primaryEnabled)
+    }
+
+    @Test
+    fun pendingWidgetStartOffersCancelAndLocksDuration() {
+        val presentation = PriamUiState(
+            safetyAccepted = true,
+            connectionPhase = ConnectionPhase.SCANNING,
+            pendingWidgetStartDurationMinutes = 60,
+        ).toWidgetPresentation()
+
+        assertEquals("Connecting", presentation.title)
+        assertEquals("Will rock 60 min", presentation.detail)
+        assertEquals("Cancel start", presentation.actionLabel)
+        assertEquals(WidgetAction.STOP_ROCKING, presentation.action)
+        assertEquals(false, presentation.durationEnabled)
+    }
+
+    @Test
     fun connectedStateShowsStrollerAndBattery() {
         val presentation = PriamUiState(
+            safetyAccepted = true,
             connectionPhase = ConnectionPhase.READY,
             connectedDeviceName = "e-Priam",
             batteryPercent = 74,
@@ -35,10 +61,22 @@ class PriamWidgetPresentationTest {
         ).toWidgetPresentation()
 
         assertEquals("e-Priam", presentation.title)
-        assertEquals("Battery 74%", presentation.detail)
+        assertEquals("Ready to rock", presentation.detail)
+        assertEquals(74, presentation.batteryPercent)
         assertEquals(ThemePalette.ROSE_GOLD, presentation.palette)
         assertEquals(ThemeMode.DARK, presentation.themeMode)
         assertEquals(true, presentation.primaryEnabled)
+    }
+
+    @Test
+    fun disconnectedStateDoesNotShowStaleBattery() {
+        val presentation = PriamUiState(
+            safetyAccepted = true,
+            connectionPhase = ConnectionPhase.IDLE,
+            batteryPercent = 74,
+        ).toWidgetPresentation()
+
+        assertEquals(null, presentation.batteryPercent)
     }
 
     @Test
@@ -53,7 +91,7 @@ class PriamWidgetPresentationTest {
             ),
         ).toWidgetPresentation()
 
-        assertEquals("Rocking · Medium", presentation.title)
+        assertEquals("Rocking", presentation.title)
         assertEquals("13 min remaining", presentation.detail)
         assertEquals("Stop", presentation.actionLabel)
         assertEquals(WidgetAction.STOP_ROCKING, presentation.action)
@@ -72,7 +110,8 @@ class PriamWidgetPresentationTest {
             ),
         ).toWidgetPresentation()
 
-        assertEquals("Connection lost · 1 min remaining", presentation.detail)
+        assertEquals("Link lost", presentation.title)
+        assertEquals("1 min remaining", presentation.detail)
         assertEquals(WidgetAction.STOP_ROCKING, presentation.action)
     }
 

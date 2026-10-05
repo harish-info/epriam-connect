@@ -1,7 +1,6 @@
 package dev.epriam.connect.widget
 
 import android.content.Context
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
@@ -13,12 +12,10 @@ import androidx.glance.GlanceModifier
 import androidx.glance.ColorFilter
 import androidx.glance.Image
 import androidx.glance.ImageProvider
-import androidx.glance.LocalContext
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import androidx.glance.appwidget.action.actionStartService
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.appWidgetBackground
 import androidx.glance.appwidget.cornerRadius
@@ -30,6 +27,7 @@ import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
@@ -44,7 +42,6 @@ import dev.epriam.connect.PriamApplication
 import dev.epriam.connect.R
 import dev.epriam.connect.domain.ThemeMode
 import dev.epriam.connect.domain.ThemePalette
-import dev.epriam.connect.service.RockingSessionService
 
 class PriamWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -62,76 +59,96 @@ class PriamWidgetReceiver : GlanceAppWidgetReceiver() {
 
 @Composable
 internal fun PriamWidgetContent(presentation: PriamWidgetPresentation) {
-    val context = LocalContext.current
     val colors = presentation.widgetColors()
     val openApp = actionStartActivity<MainActivity>()
     val primaryAction = when (presentation.action) {
         WidgetAction.START_ROCKING -> actionRunCallback<StartRockingAction>()
-        WidgetAction.STOP_ROCKING -> actionStartService(
-            Intent(context, RockingSessionService::class.java)
-                .setAction(RockingSessionService.ACTION_STOP),
-            isForegroundService = true,
-        )
+        WidgetAction.STOP_ROCKING -> actionRunCallback<StopRockingAction>()
     }
 
-    Column(
-        modifier = GlanceModifier
-            .fillMaxWidth()
-            .background(colors.background)
-            .appWidgetBackground()
-            .cornerRadius(24.dp)
-            .clickable(openApp)
-            .padding(14.dp),
+    Box(
+        modifier = GlanceModifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
     ) {
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Vertical.CenterVertically,
+        Column(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .background(colors.background)
+                .appWidgetBackground()
+                .cornerRadius(24.dp)
+                .clickable(openApp)
+                .padding(14.dp),
         ) {
-            Image(
-                provider = ImageProvider(R.drawable.ic_stroller),
-                contentDescription = "ePriam stroller",
-                modifier = GlanceModifier.size(28.dp),
-                colorFilter = ColorFilter.tint(colors.primary),
-            )
-            Spacer(GlanceModifier.width(10.dp))
-            Column(modifier = GlanceModifier.defaultWeight()) {
+            Row(
+                modifier = GlanceModifier.fillMaxWidth().height(44.dp),
+                verticalAlignment = Alignment.Vertical.CenterVertically,
+            ) {
+                Image(
+                    provider = ImageProvider(R.drawable.ic_stroller),
+                    contentDescription = "ePriam stroller",
+                    modifier = GlanceModifier.size(32.dp),
+                )
+                Spacer(GlanceModifier.width(10.dp))
+                Column(modifier = GlanceModifier.defaultWeight()) {
+                    Text(
+                        text = presentation.title,
+                        maxLines = 1,
+                        style = TextStyle(
+                            color = colors.onBackground,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                    )
+                    Spacer(GlanceModifier.height(2.dp))
+                    Text(
+                        text = presentation.detail,
+                        maxLines = 1,
+                        style = TextStyle(color = colors.secondary, fontSize = 12.sp),
+                    )
+                }
+                presentation.batteryPercent?.let { percent ->
+                    Spacer(GlanceModifier.width(4.dp))
+                    Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+                        Image(
+                            provider = ImageProvider(R.drawable.ic_widget_battery),
+                            contentDescription = null,
+                            modifier = GlanceModifier.width(16.dp).height(12.dp),
+                            colorFilter = ColorFilter.tint(colors.onBackground),
+                        )
+                        Spacer(GlanceModifier.width(2.dp))
+                        Text(
+                            text = "$percent%",
+                            maxLines = 1,
+                            style = TextStyle(
+                                color = colors.onBackground,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                        )
+                    }
+                }
+            }
+            Spacer(GlanceModifier.height(10.dp))
+            DurationPresets(presentation, colors)
+            Spacer(GlanceModifier.height(10.dp))
+            Box(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(if (presentation.primaryEnabled) colors.primary else colors.control)
+                    .cornerRadius(24.dp)
+                    .clickable(primaryAction),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text(
-                    text = presentation.title,
-                    maxLines = 1,
+                    text = presentation.actionLabel,
                     style = TextStyle(
-                        color = colors.onBackground,
-                        fontSize = 16.sp,
+                        color = if (presentation.primaryEnabled) colors.onPrimary else colors.onBackground,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                     ),
                 )
-                Spacer(GlanceModifier.height(2.dp))
-                Text(
-                    text = presentation.detail,
-                    maxLines = 1,
-                    style = TextStyle(color = colors.secondary, fontSize = 12.sp),
-                )
             }
-        }
-        Spacer(GlanceModifier.height(10.dp))
-        DurationPresets(presentation, colors)
-        Spacer(GlanceModifier.height(10.dp))
-        Box(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .background(if (presentation.primaryEnabled) colors.primary else colors.control)
-                .cornerRadius(24.dp)
-                .clickable(primaryAction),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = presentation.actionLabel,
-                style = TextStyle(
-                    color = if (presentation.primaryEnabled) colors.onPrimary else colors.onBackground,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-            )
         }
     }
 }

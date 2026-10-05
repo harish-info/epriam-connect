@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 internal class RockingSessionController(
     private val scope: CoroutineScope,
@@ -82,23 +83,25 @@ internal class RockingSessionController(
         )
     }
 
-    fun start() {
+    fun start(request: RockingStartRequest? = null) {
         val state = currentState()
         if (!state.isReady || state.motionMayBeActive) return
 
         liveUpdates.cancel()
-        val durationSeconds = state.selectedDurationMinutes * 60
+        val intensity = request?.intensity ?: state.selectedIntensity
+        val durationSeconds = (request?.durationMinutes ?: state.selectedDurationMinutes) * 60
+        val continueWhenDisconnected = request?.continueWhenDisconnected ?: state.continueRockingWhenDisconnected
         updateState {
-            it.copy(rockingState = RockingState.Starting(state.selectedIntensity, durationSeconds))
+            it.copy(rockingState = RockingState.Starting(intensity, durationSeconds))
         }
         if (state.isDemo) {
-            runDemoCountdown(state.selectedIntensity, durationSeconds)
+            runDemoCountdown(intensity, durationSeconds)
             return
         }
         sendStartCommand(
-            intensity = state.selectedIntensity,
+            intensity = intensity,
             durationSeconds = durationSeconds,
-            continueWhenDisconnected = state.continueRockingWhenDisconnected,
+            continueWhenDisconnected = continueWhenDisconnected,
         )
     }
 
@@ -149,7 +152,7 @@ internal class RockingSessionController(
                     linkLossFlagSet = continueWhenDisconnected,
                 ),
             )
-            runCatching { writeRocking(packet) }
+            runCatching { withTimeout(ROCKING_WRITE_TIMEOUT_MILLIS) { writeRocking(packet) } }
                 .onSuccess {
                     onDiagnostic("Rocking write ${PriamProtocol.toHex(packet)}")
                     delay(START_CONFIRMATION_MILLIS)
@@ -166,13 +169,15 @@ internal class RockingSessionController(
                     }
                 }
                 .onFailure { error ->
-                    onError("Rocking write failed: ${error.message}")
-                    updateState { state ->
-                        state.copy(
-                            rockingState = RockingState.Unconfirmed(
-                                "Rocking write was not confirmed; physically verify the stroller is still",
-                            ),
-                        )
+                    if (currentState().rockingState is RockingState.Starting) {
+                        onError("Rocking write failed: ${error.message}")
+                        updateState { state ->
+                            if (state.rockingState is RockingState.Starting) state.copy(
+                                rockingState = RockingState.Unconfirmed(
+                                    "Rocking write was not confirmed; physically verify the stroller is still",
+                                ),
+                            ) else state
+                        }
                     }
                 }
         }
@@ -181,7 +186,7 @@ internal class RockingSessionController(
     private fun sendStopCommand() {
         scope.launch {
             val packet = PriamProtocol.encodeStopCandidate()
-            runCatching { writeRocking(packet) }
+            runCatching { withTimeout(ROCKING_WRITE_TIMEOUT_MILLIS) { writeRocking(packet) } }
                 .onSuccess {
                     onDiagnostic("Stop write ${PriamProtocol.toHex(packet)}")
                     delay(STOP_CONFIRMATION_MILLIS)
@@ -198,13 +203,19 @@ internal class RockingSessionController(
                     }
                 }
                 .onFailure { error ->
-                    onError("Stop write failed: ${error.message}")
-                    updateState { state ->
-                        state.copy(
-                            rockingState = RockingState.Unconfirmed(
-                                "Stop was not confirmed; physically verify the stroller stopped",
-                            ),
-                        )
+                    if (currentState().rockingState is RockingState.Stopping ||
+                        currentState().rockingState is RockingState.Active
+                    ) {
+                        onError("Stop write failed: ${error.message}")
+                        updateState { state ->
+                            if (state.rockingState is RockingState.Stopping ||
+                                state.rockingState is RockingState.Active
+                            ) state.copy(
+                                rockingState = RockingState.Unconfirmed(
+                                    "Stop was not confirmed; physically verify the stroller stopped",
+                                ),
+                            ) else state
+                        }
                     }
                 }
         }
@@ -256,8 +267,15 @@ internal class RockingSessionController(
     private companion object {
         const val START_CONFIRMATION_MILLIS = 3_000L
         const val STOP_CONFIRMATION_MILLIS = 2_000L
+        const val ROCKING_WRITE_TIMEOUT_MILLIS = 5_000L
     }
 }
+
+internal data class RockingStartRequest(
+    val intensity: RockingIntensity,
+    val durationMinutes: Int,
+    val continueWhenDisconnected: Boolean,
+)
 
 internal fun RockingState.Active.toUpdateRequest(
     intensity: RockingIntensity = this.intensity,

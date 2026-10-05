@@ -42,6 +42,8 @@ class PriamRepository(context: Context) {
     private var automaticReconnectActive = false
     private var reconnectAttempt = 0
     private var stopAfterReconnect = false
+    private var pendingWidgetStart: RockingStartRequest? = null
+    private var widgetStartTimeoutJob: Job? = null
 
     private val _state = MutableStateFlow(preferences.loadInitialState())
     val state: StateFlow<PriamUiState> = _state.asStateFlow()
@@ -67,6 +69,7 @@ class PriamRepository(context: Context) {
 
     @SuppressLint("MissingPermission")
     fun startScan() {
+        clearPendingWidgetStart()
         if (_state.value.motionMayBeActive && lastCandidate != null) {
             reconnect()
             return
@@ -79,6 +82,10 @@ class PriamRepository(context: Context) {
         if (!_state.value.safetyAccepted) return
         leaveDemo()
         if (!scanner.isBluetoothEnabled) {
+            if (pendingWidgetStart != null) {
+                stopBluetoothWork("Bluetooth is off. Turn it on, then tap Connect & start again.")
+                return
+            }
             if (!automaticReconnectActive && reconnectIdentityKey == null) {
                 _state.update {
                     it.copy(connectionPhase = ConnectionPhase.ERROR, statusMessage = "Turn on Bluetooth to scan")
@@ -142,7 +149,11 @@ class PriamRepository(context: Context) {
                     }
                 },
                 onError = { message ->
-                    if (automaticReconnectActive || reconnectIdentityKey != null) retryReconnect(message) else fail(message)
+                    when {
+                        automaticReconnectActive || reconnectIdentityKey != null -> retryReconnect(message)
+                        pendingWidgetStart != null -> retryWidgetStart(message)
+                        else -> fail(message)
+                    }
                 },
             )
             scanTimeout = scope.launch {
@@ -161,6 +172,8 @@ class PriamRepository(context: Context) {
                     connectDiscoveredCandidate(onlyCandidate)
                 } else if (automaticReconnectActive) {
                     retryReconnect("Couldn’t identify one stroller yet.")
+                } else if (pendingWidgetStart != null) {
+                    retryWidgetStart("Stroller not found yet.")
                 } else {
                     _state.update { latest ->
                         if (latest.connectionPhase != ConnectionPhase.SCANNING) latest else latest.copy(
@@ -265,6 +278,10 @@ class PriamRepository(context: Context) {
     }
 
     fun onBluetoothStateChanged(enabled: Boolean) {
+        if (!enabled && pendingWidgetStart != null) {
+            stopBluetoothWork("Bluetooth turned off. Tap Connect & start after turning it on.")
+            return
+        }
         if (!automaticReconnectActive) return
         if (enabled) {
             addDiagnostic("Bluetooth is on; resuming automatic reconnect")
@@ -286,6 +303,7 @@ class PriamRepository(context: Context) {
     }
 
     fun disconnect() {
+        clearPendingWidgetStart()
         if (_state.value.motionMayBeActive) {
             actionError("Stop rocking and verify the stroller is still before disconnecting")
             return
@@ -325,7 +343,13 @@ class PriamRepository(context: Context) {
         )
     }
 
+    fun cancelWidgetStart() {
+        if (pendingWidgetStart == null) return
+        stopBluetoothWork("Widget start canceled", ConnectionPhase.IDLE)
+    }
+
     fun enterDemo() {
+        clearPendingWidgetStart()
         scanner.stop()
         scanTimeout?.cancel()
         autoConnectJob?.cancel()
@@ -452,10 +476,49 @@ class PriamRepository(context: Context) {
     }
 
     fun startRocking() {
+        clearPendingWidgetStart()
         rockingSession.start()
     }
 
+    fun startRockingFromWidget(): Boolean {
+        val current = _state.value
+        if (!current.safetyAccepted || current.motionMayBeActive || pendingWidgetStart != null) return false
+        val request = RockingStartRequest(
+            intensity = current.selectedIntensity,
+            durationMinutes = current.selectedDurationMinutes,
+            continueWhenDisconnected = current.continueRockingWhenDisconnected,
+        )
+        if (current.connectionPhase == ConnectionPhase.READY && connectionReady && manager != null) {
+            rockingSession.start(request)
+            return true
+        }
+        if (!scanner.isBluetoothEnabled) {
+            actionError("Turn on Bluetooth, then tap Connect & start again")
+            return false
+        }
+
+        leaveDemo()
+        cancelAutomaticReconnect()
+        pendingWidgetStart = request
+        _state.update {
+            it.copy(pendingWidgetStartDurationMinutes = request.durationMinutes)
+        }
+        widgetStartTimeoutJob = scope.launch {
+            delay(WIDGET_START_TIMEOUT_MILLIS)
+            if (pendingWidgetStart === request) {
+                stopBluetoothWork("Couldn’t connect within one minute. Tap Connect & start to try again.")
+            }
+        }
+        addDiagnostic("Widget start requested; scanning for up to one minute")
+        startScan(reconnectIdentityKey = null)
+        return true
+    }
+
     fun stopRocking() {
+        if (pendingWidgetStart != null) {
+            stopEverything()
+            return
+        }
         val state = _state.value
         if (!state.isReady && state.motionMayBeActive && state.canReconnect) {
             stopAfterReconnect = true
@@ -489,6 +552,11 @@ class PriamRepository(context: Context) {
             )
         }
         addDiagnostic("Required e-Priam service and motor characteristics found")
+        pendingWidgetStart?.let { request ->
+            rockingSession.start(request)
+            clearPendingWidgetStart()
+            addDiagnostic("Widget start sent after connection became ready")
+        }
         if (stopAfterReconnect) {
             stopAfterReconnect = false
             if (_state.value.motionMayBeActive) rockingSession.stop()
@@ -682,6 +750,31 @@ class PriamRepository(context: Context) {
         }
     }
 
+    private fun retryWidgetStart(message: String) {
+        if (pendingWidgetStart == null) return
+        scanner.stop()
+        scanTimeout?.cancel()
+        autoConnectJob?.cancel()
+        reconnectRetryJob?.cancel()
+        _state.update {
+            it.copy(connectionPhase = ConnectionPhase.SCANNING, statusMessage = "$message Scanning again…")
+        }
+        reconnectRetryJob = scope.launch {
+            delay(1_000)
+            if (pendingWidgetStart != null) startScan(reconnectIdentityKey = null)
+        }
+    }
+
+    private fun clearPendingWidgetStart() {
+        pendingWidgetStart = null
+        widgetStartTimeoutJob?.cancel()
+        widgetStartTimeoutJob = null
+        _state.update {
+            if (it.pendingWidgetStartDurationMinutes == null) it
+            else it.copy(pendingWidgetStartDurationMinutes = null)
+        }
+    }
+
     private fun resetAndScan() {
         scanner.stop()
         scanTimeout?.cancel()
@@ -762,7 +855,8 @@ class PriamRepository(context: Context) {
         _state.update { it.copy(reconnectSecondsRemaining = null) }
     }
 
-    private fun stopBluetoothWork(message: String) {
+    private fun stopBluetoothWork(message: String, finalPhase: ConnectionPhase = ConnectionPhase.ERROR) {
+        clearPendingWidgetStart()
         scanner.stop()
         scanTimeout?.cancel()
         scanTimeout = null
@@ -781,7 +875,7 @@ class PriamRepository(context: Context) {
 
         _state.update {
             it.copy(
-                connectionPhase = ConnectionPhase.ERROR,
+                connectionPhase = finalPhase,
                 statusMessage = message,
                 candidates = emptyList(),
                 connectedDeviceName = null,
@@ -811,6 +905,7 @@ class PriamRepository(context: Context) {
     }
 
     private fun fail(message: String) {
+        clearPendingWidgetStart()
         _state.update { it.copy(connectionPhase = ConnectionPhase.ERROR, statusMessage = message) }
         addDiagnostic(message)
     }
@@ -835,6 +930,7 @@ class PriamRepository(context: Context) {
         private const val AUTO_CONNECT_DELAY_MILLIS = 1_200L
         private const val CANDIDATE_FRESHNESS_MILLIS = 30_000L
         private const val GATT_CLOSE_TIMEOUT_MILLIS = 2_000L
+        private const val WIDGET_START_TIMEOUT_MILLIS = 60_000L
         internal const val RECONNECT_TIMEOUT_MILLIS = 3 * 60_000L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
     }

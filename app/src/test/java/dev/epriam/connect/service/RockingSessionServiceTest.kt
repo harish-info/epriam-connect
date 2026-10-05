@@ -25,6 +25,14 @@ class RockingSessionServiceTest {
                 ),
             ),
         )
+        assertTrue(
+            shouldStopEverything(
+                PriamUiState(
+                    connectionPhase = ConnectionPhase.SCANNING,
+                    pendingWidgetStartDurationMinutes = 30,
+                ),
+            ),
+        )
         assertFalse(
             shouldStopEverything(
                 PriamUiState(connectionPhase = ConnectionPhase.READY),

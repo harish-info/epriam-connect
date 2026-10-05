@@ -26,26 +26,44 @@ import dev.epriam.connect.ui.PriamApp
 class MainActivity : ComponentActivity() {
     private val repository by lazy { (application as PriamApplication).repository }
     private var startRockingAfterNotificationPrompt = false
+    private var widgetStartAfterSetup = false
 
     private val bluetoothPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
-        if (result.values.all { it }) continueScan() else repository.reportError(
-            "Nearby devices permission is required to find and connect to the stroller",
-        )
+        if (widgetStartAfterSetup) {
+            if (result.values.all { it }) requestWidgetStart()
+            else {
+                widgetStartAfterSetup = false
+                repository.reportError("Nearby devices permission is required to start from the widget")
+            }
+        } else if (result.values.all { it }) continueScan()
+        else repository.reportError("Nearby devices permission is required to find and connect to the stroller")
     }
 
     private val enableBluetooth = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
-        if (bluetoothAdapter()?.isEnabled == true) repository.startScan()
+        if (widgetStartAfterSetup) {
+            if (bluetoothAdapter()?.isEnabled == true) requestWidgetStart()
+            else {
+                widgetStartAfterSetup = false
+                repository.reportError("Bluetooth must be on to start from the widget")
+            }
+        } else if (bluetoothAdapter()?.isEnabled == true) repository.startScan()
         else repository.reportError("Bluetooth must be turned on to scan")
     }
 
     private val notificationsPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (startRockingAfterNotificationPrompt) {
+        if (widgetStartAfterSetup) {
+            if (granted) requestWidgetStart()
+            else {
+                widgetStartAfterSetup = false
+                repository.reportActionError("Notification permission is required for the Stop control")
+            }
+        } else if (startRockingAfterNotificationPrompt) {
             startRockingAfterNotificationPrompt = false
             if (granted) beginRockingSession()
             else repository.reportActionError("Notification permission is required for the persistent Stop control")
@@ -91,7 +109,42 @@ class MainActivity : ComponentActivity() {
     private fun handleWidgetAction(intent: Intent?) {
         if (intent?.action != ACTION_START_ROCKING_FROM_WIDGET) return
         intent.action = null
-        window.decorView.post(::requestRockingSession)
+        window.decorView.post(::requestWidgetStart)
+    }
+
+    private fun requestWidgetStart() {
+        if (!repository.state.value.safetyAccepted) {
+            widgetStartAfterSetup = false
+            repository.reportActionError("Finish setup, then tap Connect & start again")
+            return
+        }
+        val missing = requiredBluetoothPermissions().filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            widgetStartAfterSetup = true
+            bluetoothPermissions.launch(missing.toTypedArray())
+            return
+        }
+        if (bluetoothAdapter()?.isEnabled != true) {
+            widgetStartAfterSetup = true
+            enableBluetooth.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            widgetStartAfterSetup = true
+            notificationsPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        widgetStartAfterSetup = false
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, RockingSessionService::class.java)
+                .setAction(RockingSessionService.ACTION_WIDGET_START),
+        )
     }
 
     private fun requestScan() {
