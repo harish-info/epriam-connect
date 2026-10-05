@@ -58,15 +58,18 @@ internal fun ConnectionScreen(
     )
     if (state.canReconnect && state.connectionPhase in reconnectablePhases) {
         Spacer(Modifier.height(20.dp))
-        WarningPanel(state.statusMessage) {
-            Button(
-                onClick = actions.reconnect,
-                shape = MaterialTheme.shapes.small,
-            ) {
-                Text(if (state.connectionPhase == ConnectionPhase.RECONNECTING) "Retry now" else "Reconnect")
-            }
-        }
+        ConnectionRecoveryPanel(
+            state = state,
+            onRetry = actions.reconnect,
+            onStopEverything = actions.stopEverything,
+        )
+        return
+    } else if (state.connectionPhase == ConnectionPhase.ERROR) {
         Spacer(Modifier.height(20.dp))
+        ConnectionStoppedPanel(message = state.statusMessage, onScanAgain = actions.scan)
+        Spacer(Modifier.height(24.dp))
+        ConnectionGuide(scanning = false)
+        return
     } else {
         Spacer(Modifier.height(24.dp))
         ConnectionGuide(scanning = state.connectionPhase == ConnectionPhase.SCANNING)

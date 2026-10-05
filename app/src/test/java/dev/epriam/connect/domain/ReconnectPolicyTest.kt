@@ -13,4 +13,13 @@ class ReconnectPolicyTest {
         assertEquals(30_000L, reconnectDelayMillis(4))
         assertEquals(30_000L, reconnectDelayMillis(20))
     }
+
+    @Test
+    fun `automatic reconnect window is bounded to three minutes`() {
+        assertEquals(180_000L, PriamRepository.RECONNECT_TIMEOUT_MILLIS)
+        assertEquals(180, reconnectSecondsRemaining(180_000L, 0L))
+        assertEquals(1, reconnectSecondsRemaining(180_000L, 179_001L))
+        assertEquals(0, reconnectSecondsRemaining(180_000L, 180_000L))
+        assertEquals(0, reconnectSecondsRemaining(180_000L, 200_000L))
+    }
 }

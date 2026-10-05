@@ -89,6 +89,7 @@ data class PriamUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val themePalette: ThemePalette = ThemePalette.ROSE_GOLD,
     val canReconnect: Boolean = false,
+    val reconnectSecondsRemaining: Int? = null,
     val isDemo: Boolean = false,
     val diagnostics: List<DiagnosticEvent> = emptyList(),
 ) {

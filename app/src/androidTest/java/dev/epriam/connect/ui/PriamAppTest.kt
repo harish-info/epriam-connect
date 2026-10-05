@@ -130,12 +130,13 @@ class PriamAppTest {
             }
         }
 
-        composeRule.onNodeWithText("Reconnect").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Try again now").performScrollTo().assertIsDisplayed().performClick()
         composeRule.runOnIdle { assert(reconnectRequested) }
     }
 
     @Test
-    fun linkLossShowsReconnectInsteadOfSendStopError() {
+    fun linkLossOffersClearRetryAndStopEverythingActions() {
+        var stopEverythingRequested = false
         composeRule.setContent {
             EPriamConnectTheme {
                 PriamAppContent(
@@ -151,14 +152,39 @@ class PriamAppTest {
                             linkLossFlagSet = false,
                         ),
                     ),
-                    PriamActions(),
+                    PriamActions(stopEverything = { stopEverythingRequested = true }),
                 )
             }
         }
 
-        composeRule.onNodeWithText("Reconnect now").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Reconnect and stop").assertIsDisplayed()
+        composeRule.onNodeWithText("Try again now").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Stop everything").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Automatic retries stop after 3 minutes.").assertIsDisplayed()
+        composeRule.runOnIdle { assert(stopEverythingRequested) }
+        composeRule.onNodeWithText("Reconnect and stop").assertIsNotDisplayed()
         composeRule.onNodeWithText("Send stop again").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun stoppedRecoveryShowsOneClearScanActionWithoutAutoScanning() {
+        var scanRequested = false
+        composeRule.setContent {
+            EPriamConnectTheme {
+                PriamAppContent(
+                    PriamUiState(
+                        safetyAccepted = true,
+                        connectionPhase = ConnectionPhase.ERROR,
+                        statusMessage = "Bluetooth activity stopped. Scan again when you’re ready.",
+                    ),
+                    PriamActions(scan = { scanRequested = true }),
+                )
+            }
+        }
+
+        composeRule.runOnIdle { assert(!scanRequested) }
+        composeRule.onNodeWithText("Scan again").assertIsDisplayed().performClick()
+        composeRule.runOnIdle { assert(scanRequested) }
+        composeRule.onNodeWithText("Stop everything").assertIsNotDisplayed()
     }
 
     @Test
