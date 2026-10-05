@@ -30,6 +30,7 @@ class PriamRepository(context: Context) {
     private var autoConnectJob: Job? = null
     private var connectionJob: Job? = null
     private var reconnectRetryJob: Job? = null
+    private var reconnectTimeoutJob: Job? = null
     private var connectionGeneration = 0L
     private var connectionReady = false
     private var lastCandidate: DeviceCandidate? = null
@@ -289,6 +290,13 @@ class PriamRepository(context: Context) {
                 )
             }
         }
+    }
+
+    fun stopEverything() {
+        stopBluetoothWork(
+            "Bluetooth activity stopped. Scan again when you’re ready. " +
+                "If the stroller was moving, verify it stopped.",
+        )
     }
 
     fun enterDemo() {
@@ -589,7 +597,33 @@ class PriamRepository(context: Context) {
     private fun beginAutomaticReconnect(candidate: DeviceCandidate, resetAttempts: Boolean) {
         automaticReconnectActive = true
         reconnectTarget = candidate
-        if (resetAttempts) reconnectAttempt = 0
+        if (resetAttempts) {
+            reconnectAttempt = 0
+            startReconnectTimeout()
+        }
+    }
+
+    private fun startReconnectTimeout() {
+        reconnectTimeoutJob?.cancel()
+        val deadline = SystemClock.elapsedRealtime() + RECONNECT_TIMEOUT_MILLIS
+        reconnectTimeoutJob = scope.launch {
+            while (automaticReconnectActive) {
+                val remainingSeconds = reconnectSecondsRemaining(
+                    deadlineElapsedRealtimeMillis = deadline,
+                    nowElapsedRealtimeMillis = SystemClock.elapsedRealtime(),
+                )
+                _state.update { it.copy(reconnectSecondsRemaining = remainingSeconds) }
+                if (remainingSeconds == 0) {
+                    addDiagnostic("Automatic reconnect stopped after ${RECONNECT_TIMEOUT_MILLIS / 60_000} minutes")
+                    stopBluetoothWork(
+                        "Reconnect stopped after 3 minutes. Scan again when you’re ready. " +
+                            "If the stroller was moving, verify it stopped.",
+                    )
+                    return@launch
+                }
+                delay(1_000)
+            }
+        }
     }
 
     private fun retryReconnect(message: String) {
@@ -624,9 +658,49 @@ class PriamRepository(context: Context) {
     private fun cancelAutomaticReconnect() {
         reconnectRetryJob?.cancel()
         reconnectRetryJob = null
+        reconnectTimeoutJob?.cancel()
+        reconnectTimeoutJob = null
         automaticReconnectActive = false
         reconnectTarget = null
         reconnectAttempt = 0
+        _state.update { it.copy(reconnectSecondsRemaining = null) }
+    }
+
+    private fun stopBluetoothWork(message: String) {
+        scanner.stop()
+        scanTimeout?.cancel()
+        scanTimeout = null
+        autoConnectJob?.cancel()
+        autoConnectJob = null
+        rockingSession.cancelPendingWork()
+        stopAfterReconnect = false
+
+        val managerToClose = manager
+        manager = null
+        connectionReady = false
+        connectionJob?.cancel()
+        connectionJob = null
+        connectionGeneration++
+        cancelAutomaticReconnect()
+
+        _state.update {
+            it.copy(
+                connectionPhase = ConnectionPhase.ERROR,
+                statusMessage = message,
+                candidates = emptyList(),
+                connectedDeviceName = null,
+                batteryPercent = null,
+                batteryRawValue = null,
+                batteryLeds = null,
+                driveState = DriveState.Unknown,
+                rockingState = RockingState.Off,
+                pendingContinueRockingWhenDisconnected = null,
+                canReconnect = false,
+                reconnectSecondsRemaining = null,
+            )
+        }
+        addDiagnostic("All Bluetooth work stopped")
+        scope.launch { managerToClose?.disconnectAndClose() }
     }
 
     private fun applyDisconnectPolicyPreference(enabled: Boolean) {
@@ -662,8 +736,17 @@ class PriamRepository(context: Context) {
         private const val SCAN_DURATION_MILLIS = 12_000L
         private const val AUTO_CONNECT_DELAY_MILLIS = 1_200L
         private const val CANDIDATE_FRESHNESS_MILLIS = 30_000L
+        internal const val RECONNECT_TIMEOUT_MILLIS = 3 * 60_000L
         private const val MAX_DIAGNOSTIC_EVENTS = 100
     }
+}
+
+internal fun reconnectSecondsRemaining(
+    deadlineElapsedRealtimeMillis: Long,
+    nowElapsedRealtimeMillis: Long,
+): Int {
+    val remainingMillis = (deadlineElapsedRealtimeMillis - nowElapsedRealtimeMillis).coerceAtLeast(0L)
+    return ((remainingMillis + 999L) / 1_000L).toInt()
 }
 
 internal fun reconnectDelayMillis(attempt: Int): Long = when (attempt.coerceAtLeast(0)) {

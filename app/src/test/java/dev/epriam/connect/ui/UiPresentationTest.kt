@@ -37,4 +37,11 @@ class UiPresentationTest {
         assertEquals("Stroller nearby", signalLabel(-80))
         assertEquals("Move closer for a reliable connection", signalLabel(-81))
     }
+
+    @Test
+    fun `reconnect timer explains the bounded retry window`() {
+        assertEquals("Automatic retries stop after 3 minutes.", reconnectTimeLabel(null))
+        assertEquals("Automatic retries stop in 3:00.", reconnectTimeLabel(180))
+        assertEquals("Automatic retries stop in 0:09.", reconnectTimeLabel(9))
+    }
 }

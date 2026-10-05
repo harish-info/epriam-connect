@@ -13,7 +13,7 @@ import androidx.core.app.ServiceCompat
 import dev.epriam.connect.MainActivity
 import dev.epriam.connect.PriamApplication
 import dev.epriam.connect.R
-import dev.epriam.connect.domain.ConnectionPhase
+import dev.epriam.connect.domain.PriamUiState
 import dev.epriam.connect.domain.RockingState
 import dev.epriam.connect.domain.ThemePalette
 import dev.epriam.connect.theme.notificationAccentArgb
@@ -36,12 +36,23 @@ class RockingSessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val repository = (application as PriamApplication).repository
-        if (intent?.action == ACTION_STOP) repository.stopRocking()
-        startInForeground("Starting…", repository.state.value.themePalette)
+        if (intent?.action == ACTION_STOP) {
+            if (shouldStopEverything(repository.state.value)) {
+                repository.stopEverything()
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
+            repository.stopRocking()
+        }
+        startInForeground(
+            content = "Starting…",
+            themePalette = repository.state.value.themePalette,
+            reconnecting = false,
+        )
         observer?.cancel()
         observer = scope.launch {
             repository.state.collectLatest { state ->
-                if (state.connectionPhase == ConnectionPhase.RECONNECTING) {
+                if (state.reconnectSecondsRemaining != null && !state.isReady) {
                     startInForeground(
                         if (state.rockingState is RockingState.Stopping) {
                             "Reconnecting to stop rocking…"
@@ -49,6 +60,7 @@ class RockingSessionService : Service() {
                             "Connection lost — reconnecting…"
                         },
                         state.themePalette,
+                        reconnecting = true,
                     )
                     return@collectLatest
                 }
@@ -56,12 +68,14 @@ class RockingSessionService : Service() {
                     is RockingState.Active -> startInForeground(
                         formatRemaining(rocking.remainingSeconds),
                         state.themePalette,
+                        reconnecting = false,
                     )
-                    is RockingState.Starting -> startInForeground("Starting…", state.themePalette)
-                    is RockingState.Stopping -> startInForeground("Stopping…", state.themePalette)
+                    is RockingState.Starting -> startInForeground("Starting…", state.themePalette, reconnecting = false)
+                    is RockingState.Stopping -> startInForeground("Stopping…", state.themePalette, reconnecting = false)
                     is RockingState.Unconfirmed -> startInForeground(
                         "Status unconfirmed — verify stroller",
                         state.themePalette,
+                        reconnecting = false,
                     )
                     else -> stopSelf()
                 }
@@ -70,7 +84,11 @@ class RockingSessionService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startInForeground(content: String, themePalette: ThemePalette) {
+    private fun startInForeground(
+        content: String,
+        themePalette: ThemePalette,
+        reconnecting: Boolean,
+    ) {
         val openIntent = PendingIntent.getActivity(
             this,
             0,
@@ -91,7 +109,11 @@ class RockingSessionService : Service() {
             .setContentIntent(openIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .addAction(0, getString(R.string.stop), stopIntent)
+            .addAction(
+                0,
+                getString(if (reconnecting) R.string.stop_reconnecting else R.string.stop_rocking),
+                stopIntent,
+            )
             .build()
         ServiceCompat.startForeground(
             this,
@@ -129,3 +151,6 @@ class RockingSessionService : Service() {
         private const val NOTIFICATION_ID = 1933
     }
 }
+
+internal fun shouldStopEverything(state: PriamUiState): Boolean =
+    state.reconnectSecondsRemaining != null && !state.isReady
